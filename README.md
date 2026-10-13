@@ -20,7 +20,7 @@ Continuous tuning across LW, MW, SW, and VHF/FM, controlled by one encoder. Buil
 - **AM, FM, LSB, and USB:** SSB patch loaded and verified when required.
 - **Continuous tuning:** cross adjacent bands; stop at the overall limits without wrapping.
 - **Seek:** long-press Frequency, then rotate to search; short-press to stop and tune manually.
-- **RDS:** PS station names and RT messages share the main display, with independent scrolling when both are present.
+- **RDS:** PS station names and RT messages share the main display, with independent scrolling. UTF-8 enhanced RadioText (eRT) supports Chinese and takes priority when available.
 - **Reception controls:** bandwidth, automatic gain/manual attenuation, soft mute, and tuning step.
 - **Remembered settings:** band, per-band frequency/mode/step, reception controls, volume, brightness, and mute.
 - **Device screenshots:** export the entire displayed framebuffer as a PNG.

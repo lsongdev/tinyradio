@@ -12,6 +12,20 @@ static void name(TwoWire& bus, const char* text) {
     r[4] = 0x12; r[5] = 0x34; r[7] = i; r[10] = text[i * 2]; r[11] = text[i * 2 + 1]; bus.fifo.push_back(r);
   }
 }
+static void group(TwoWire& bus, uint16_t b, uint16_t c, uint16_t d) {
+  std::array<uint8_t,13> r{}; r[0] = 0x80; r[2] = 1;
+  r[4] = 0x12; r[5] = 0x34;
+  r[6] = b >> 8; r[7] = b; r[8] = c >> 8; r[9] = c; r[10] = d >> 8; r[11] = d;
+  bus.fifo.push_back(r);
+}
+static void enhanced(TwoWire& bus) {
+  group(bus, (6 << 11) | 22, 1, 0x6552); // 3A announces UTF-8 in 11A.
+  // Chinese UTF-8 bytes cross the four-byte segment boundary.
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    group(bus, 22 << 11, 0xe4b8, 0xade6);
+    group(bus, (22 << 11) | 1, 0x9687, 0x0d20);
+  }
+}
 static bool settle(drivers::Si473x& chip) {
   for (int i = 0; i < 20 && chip.tuning(); ++i) if (!chip.poll()) return false;
   return !chip.tuning();
@@ -31,9 +45,15 @@ int main() {
   bus.synced = false; assert(chip.readRds() && !strcmp(chip.rdsPs(), "RADIO FM"));
   assert(!chip.rdsStatus().synchronized); bus.synced = true;
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
+  enhanced(bus); assert(chip.readRds() && bus.fifo.empty());
+  assert(chip.rdsEnhancedGroup() == 22 && chip.rdsEnhancedFlags() == 1);
+  assert(!strcmp(chip.rdsEnhancedText(), "中文") && !strcmp(chip.rdsPs(), "RADIO FM"));
+  assert(chip.readRds() && !strcmp(chip.rdsEnhancedText(), "中文"));
   name(bus, "OLD NAME"); assert(chip.tune(100100000) && !chip.rdsPs()[0] && bus.fifo.empty()); assert(settle(chip));
+  assert(chip.rdsEnhancedGroup() == -1 && !chip.rdsEnhancedText()[0]);
+  enhanced(bus); assert(chip.readRds());
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
-  assert(chip.seek(true,64000000,108000000,100000) && !chip.rdsPs()[0]); assert(chip.cancelSeek());
+  assert(chip.seek(true,64000000,108000000,100000) && !chip.rdsPs()[0]); assert(!chip.rdsEnhancedText()[0] && chip.rdsEnhancedGroup() == -1); assert(chip.cancelSeek());
   assert(chip.configure(drivers::Mode::AM,18) && chip.setReception({0,37,8}));
   assert(chip.bandwidthHz() == 1000 && has(bus, {0x12,0,0x31,2,0,4}) && has(bus, {0x48,1,37}));
   assert(chip.configure(drivers::Mode::USB,18) && chip.setReception({0,-1,0}));
