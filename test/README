@@ -1,11 +1,7 @@
+Tests run from the repository root. Native tests use the host C++ compiler;
+Python screenshot tests use the standard library. See docs/design.md#validation
+for complete commands and scope.
 
-This directory is intended for PlatformIO Test Runner and project tests.
-
-Unit Testing is a software testing method by which individual units of
-source code, sets of one or more MCU program modules together with associated
-control data, usage procedures, and operating procedures, are tested to
-determine whether they are fit for use. Unit testing finds problems early
-in the development cycle.
-
-More information about PlatformIO Unit Testing:
-- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+Device scripts require pyserial and a connected receiver. They change settings
+and some restart the device; inspect them before use. Do not run them just to
+capture a screenshot. Use tools/capture_screen.py for a non-tuning capture.

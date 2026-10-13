@@ -1,41 +1,112 @@
-# ATS Mini SI4732 Receiver
+# ATS Mini
 
-An ESP32-S3 based portable receiver for the Sunnygold SI4732 Mini Radio (PCB 1.2). The firmware provides continuous tuning, AM/FM and SSB reception, seek, RDS display, and persistent user settings.
+[![Firmware](https://github.com/lsongdev/ats-mini/actions/workflows/firmware.yml/badge.svg)](https://github.com/lsongdev/ats-mini/actions/workflows/firmware.yml)
 
-## Hardware and documentation
+**A compact AM/FM/SSB receiver firmware for the Sunnygold SI4732 Mini Radio.**
 
-- [Hardware overview, schematic, and photos](docs/hardware.md)
-- [Radio capabilities and implementation notes](docs/radio.md)
-- [User manual](docs/user-manual.md)
+Continuous tuning across LW, MW, SW, and VHF/FM, controlled by one encoder. Built for the ESP32-S3, with RDS station names and radio text, adjustable reception settings, and persistent band memories.
 
-The receiver exposes LW (153–279 kHz), MW (520–1710 kHz), SW (2.3–26.1 MHz), and VHF/FM (64–108 MHz). AIR is listed in the interface as unavailable on this hardware. LW, MW, and SW support AM, LSB, and USB; VHF supports FM.
+<p align="center">
+  <img src="docs/images/screen-frequency.png" width="640" alt="Full receiver screen showing frequency, reception controls, signal status, and tuning scale">
+  <br>
+  <img src="docs/images/screen-rds.png" width="640" alt="Full receiver screen showing the received RDS station name in the shared main area">
+</p>
 
-## Controls
+*Actual 320 × 170 framebuffer captures exported from the receiver over USB.*
 
-Press the encoder to cycle focus through **Band → Frequency → Mode → BW → AGC → SM → Step → Volume → Brightness**. Rotate to change the focused value. At the frequency focus, rotation tunes continuously; crossing a band edge continues at the adjacent band. The global range stops at 153 kHz and 108 MHz.
+## Features
 
-Long-press Frequency to enter or leave seek mode. Rotate to search forward or backward; press to stop at the current frequency and return to manual tuning. Long-press Volume to mute or unmute.
+- **AM, FM, LSB, and USB:** SSB patch loaded and verified when required.
+- **Continuous tuning:** cross adjacent bands; stop at the overall limits without wrapping.
+- **Seek:** long-press Frequency, then rotate to search; short-press to stop and tune manually.
+- **RDS:** PS station names and RT messages share the main display, with independent scrolling when both are present.
+- **Reception controls:** bandwidth, automatic gain/manual attenuation, soft mute, and tuning step.
+- **Remembered settings:** band, per-band frequency/mode/step, reception controls, volume, brightness, and mute.
+- **Device screenshots:** export the entire displayed framebuffer as a PNG.
 
-Shortwave step options include **10 kHz and 100 kHz** in both AM and SSB. Other available steps depend on band and mode; see the [user manual](docs/user-manual.md) for the full list. Band memories, mode, step, volume, brightness, mute, and reception settings are saved to ESP32 NVS after two seconds of inactivity and restored at startup.
+| Band | Range | Modes |
+| --- | --- | --- |
+| LW | 153–279 kHz | AM / LSB / USB |
+| MW | 520–1710 kHz | AM / LSB / USB |
+| SW | 2.3–26.1 MHz | AM / LSB / USB |
+| VHF | 64–108 MHz | FM |
 
-## Build and upload
+AIR is displayed as unavailable: this hardware does not cover VHF aviation reception. See [hardware facts](docs/hardware.md) for the supported board and reference schematics.
 
-Install PlatformIO, then run:
+## Download firmware
+
+Successful `master` builds publish a [daily prerelease](https://github.com/lsongdev/ats-mini/releases), dated in **Asia/Shanghai**. New successful builds replace that day's downloads. Pull requests build and upload Actions artifacts without publishing a release.
+
+| Download | Use |
+| --- | --- |
+| `ats-mini-firmware.bin` | Application update at `0x10000`, preserving compatible settings |
+| `ats-mini-install.zip` | Flashing files, instructions, commit source snapshot, and dependency notices |
+| `ats-mini-full.bin` | Complete 16 MiB installation at `0x0`; resets settings and data |
+| `ats-mini-build-info.json` / `ats-mini-sha256sums.txt` | Commit, dependency versions, and SHA-256 hashes |
+
+Follow `FLASHING.txt` inside the install package for esptool commands. Confirm that your hardware matches the [reference board](docs/hardware.md).
+
+## Quick start
+
+Install [PlatformIO](https://platformio.org/), connect the receiver by USB, and locate its serial port:
 
 ```sh
+pio device list
 pio run -e ats-mini
 pio run -e ats-mini -t upload --upload-port /dev/ttyACM0
-pio device monitor -p /dev/ttyACM0 -b 115200
+pio device monitor --port /dev/ttyACM0 --baud 115200
 ```
 
-Replace `/dev/ttyACM0` with the port shown by `pio device list` (for example, `/dev/cu.usbmodem21101` on macOS). Uploading the firmware preserves the NVS settings partition.
+Use your device's port in place of `/dev/ttyACM0`; macOS commonly uses `/dev/cu.usbmodem…`, and Windows uses `COM…`. Normal uploads preserve saved settings in NVS.
+
+Rotate the encoder to adjust the focused item. Short-press to cycle:
+
+**Band → Frequency → Mode → BW → AGC → SM → Step → Volume → Brightness**
+
+Focus starts on Frequency. Long-press Volume to mute. Read the [user manual](docs/user-manual.md) for steps, signal indicators, RDS behavior, and troubleshooting.
+
+## Export a screenshot
+
+Close the serial monitor first. The capture tool requires Python 3 and pyserial:
+
+```sh
+python3 -m pip install -r tools/requirements.txt
+python3 tools/capture_screen.py --port /dev/ttyACM0 --output screenshot.png
+```
+
+Add `--wait 5` to let the screen settle before capture. This reads the last displayed frame without changing tuning or saved settings. The UI briefly pauses during transfer; the tool writes a lossless, native-resolution PNG without requiring Pillow.
+
+An offline [ruler renderer](tools/render_ruler.py) is also available for inspecting band boundaries:
+
+```sh
+python3 tools/render_ruler.py --band SW --frequency 26.1MHz --step 100k --output ruler.svg
+```
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Hardware facts](docs/hardware.md) | Schematics, GPIO mapping, power, display, battery measurement, and confirmed hardware observations |
+| [Design](docs/design.md) | Architecture, tuning and seek state, UI layout, RDS decoding, persistence, screenshot protocol, and validation |
+| [User manual](docs/user-manual.md) | Everyday controls, display meanings, saved settings, and troubleshooting |
 
 ## Source layout
 
-- `src/drivers/si473x` — SI4732 commands, status handling, and SSB patch.
-- `src/hal` — display, encoder, buttons, battery, backlight, audio controls, and board resources.
-- `src/radio` — bands, modes, tuning steps, frequency formatting, and saved radio state.
-- `src/app` — receiver UI and tuning/seek coordination.
-- `docs/` — hardware references, radio implementation notes, and the user manual.
+```text
+src/app/              Receiver UI and application coordination
+src/drivers/si473x/   Chip commands, tuning, reception settings, RDS, SSB patch
+src/hal/             Board resources: display, encoder, button, audio, battery, I2C, NVS
+src/radio/           Band model, frequency formatting, settings serialization
+src/examples/        Battery-screen example
+tools/               USB screenshot capture and offline ruler rendering
+test/                Native tests and opt-in device smoke tests
+docs/                Hardware facts, design, user manual, and reference assets
+```
 
-The battery indicator may show `--%` while USB-powered because the board's ADC does not reliably measure the cell voltage in that condition. See [hardware notes](docs/hardware.md).
+Run `sh tools/test.sh` for native and screenshot-tool checks. Development and test commands are documented in [Design](docs/design.md#validation).
+
+## License and credits
+
+Original firmware code, tools, tests, and documentation are available under the [MIT License](LICENSE), copyright Lsong and contributors.
+
+The bundled SSB patch, imported hardware PDFs, and reference photographs retain their upstream notices and terms. They are **not relicensed under MIT**. See [third-party notices](THIRD_PARTY_NOTICES.md) for Sunnygold, Vadim Afonkin, PU2CLR, hardware/community references, and dependency credits.
