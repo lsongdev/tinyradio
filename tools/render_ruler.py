@@ -147,7 +147,7 @@ def render(band_name: str, frequency: int, step: int, output: Path) -> None:
         major = tick["name"] or tick["endpoint"] or (tick["hz"] and (tick["hz"] // tick["step"]) % 5 == 0)
         adjacent = tick["band"] != band_index
         color = "#00ffff" if adjacent else "#d3d3d3" if major else "#505050"
-        if tick["hz"]:
+        if tick["hz"] or tick["name"]:
             parts.append(f'<line x1="{tick["x"]}" y1="140" x2="{tick["x"]}" y2="{140 + (12 if major else 6)}" stroke="{color}"/>')
         if not major:
             continue
