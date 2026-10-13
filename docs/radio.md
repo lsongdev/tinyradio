@@ -22,8 +22,8 @@ AIR 航空通信频率参考 [FAA AC 90-50D](https://www.faa.gov/regulations_pol
 
 - 选择频率焦点后，旋转编码器连续调频；越过当前频段上限进入下一可用频段下限，越过下限进入上一可用频段上限；顺序为 LW ↔ MW ↔ SW ↔ VHF，整个范围在 LW 下限 153 kHz 与 VHF 上限 108 MHz 停止，不首尾相连，并跳过 AIR。跨段后恢复目标频段的模式与步进，累积多步输入按目标频段的步进继续。
 - 短按依次选择：频段 → 频率 → 模式 → BW → AGC → SM → 步进 → 音量 → 亮度 → 频段。
-- 选择频段、模式、步进或音量后旋转修改。切换频段保留该频段本次运行的频率、模式、步进；暂不写入 Flash，重启恢复默认值。
-- 频率焦点长按 650 ms 切换手动/SEEK，SEEK 中频率变为橙色，旋转方向决定向前/向后搜台；音量焦点长按切换静音并保留音量。长按松开不会再触发短按。
+- 选择频段、模式、步进或音量后旋转修改。切换频段保留该频段频率、模式、步进；停止调节两秒后写入 NVS，重启恢复。
+- 频率焦点长按 650 ms 切换手动/SEEK，SEEK 中频率变为亮紫色，旋转方向决定向前/向后搜台；音量焦点长按切换静音并保留音量。长按松开不会再触发短按。
 - 搜台中短按取消搜索，以芯片回读的当前位置作为手动频率，焦点继续停在频率，不进入下一个焦点。
 - FM 步进：10/50/100/200 kHz；AM：1/5/9/10 kHz；SSB：10/50/100/500/1000 Hz。
 - 错误时保持静音并关闭功放，短按重置收音芯片并重试。
@@ -95,7 +95,7 @@ USB 调试命令 `e` / `h` 分别调用与短按/长按相同的动作处理，�
 
 右侧亮度、音量、电量图标及百分比使用紧凑排列。只有音量焦点的长按执行静音；频率焦点长按切换 SEEK，其余焦点长按不执行额外动作。
 
-信号区使用等高 RSSI 分段条，并在右侧显示芯片 RSSI（dBμV）与 SNR（dB）。BW 默认 FM `AUTO`、AM `3.0k`、SSB `2.2k`，可通过编码器修改；自动滤波不显示固定带宽。VALID 来自芯片频道有效性标志，AGC/ATT 后的数值是增益索引而非 dB；SM 选框显示配置的最大软静音衰减，底部 `SM*` 表示芯片 Soft Mute 当前介入；P 表示 FM 导频检测；AFC! 表示 AFC 到达调节边缘，AFC OK 表示没有该异常。
+信号区使用等高 RSSI 分段条，并在右侧显示芯片 RSSI（dBμV）与 SNR（dB）。BW 默认 FM `AUTO`、AM `3.0k`、SSB `2.2k`，可通过编码器修改；自动滤波不显示固定带宽。VALID 来自芯片频道有效性标志，AGC/ATT 后的数值是增益索引而非 dB；SM 选框显示配置的最大软静音衰减，Soft Mute 介入时 SM 选框的文字变为橙色，边框颜色继续表示焦点；P 表示 FM 导频检测；AFC! 表示 AFC 到达调节边缘，AFC OK 表示没有该异常。
 
 MONO/立体声由音量图标表示：单道声波为 mono，双道声波为存在立体声混合，静音为叉号。状态来源于 FM RSQ 的 stereo blend 回读，AM/SSB 为 mono；尚未取得稳定质量状态时不画声波。图标反映接收芯片的解码状态，不改变内置单声道功放的硬件结构。静噪 SQL 尚未实现，Soft Mute 也不等同于 SQL 门限。
 
@@ -109,7 +109,7 @@ SEEK 版本验证：构建/刷入哈希校验、原生模型测试和 `test/seek
 
 ## 可调接收参数与主显示区
 
-模式与顶部频段使用相同的 26×17 直角、无填充选框；BW、AGC、SM 选框与模式在同一行，旋钮当前焦点显示黄色。模式之后依次聚焦 BW、AGC、SM，再到步进、音量、亮度；手动频率焦点也使用黄色，SEEK 模式继续使用橙色。RSSI 等高信号条、数值、SNR 与 VALID 在同一行，下一行显示步进、AFC、实际 RF 增益索引及软静音介入状态。
+模式与顶部频段使用相同的 26×17 直角、无填充选框；BW、AGC、SM 选框与模式在同一行，旋钮当前焦点显示黄色。模式之后依次聚焦 BW、AGC、SM，再到步进、音量、亮度；手动频率焦点也使用黄色，SEEK 模式使用亮紫色。RSSI 等高信号条、数值、SNR 与 VALID 在同一行，STEP 使用直角无填充选框，位于 RSSI 行最右侧，AFC、实际 RF 增益索引、FM 导频 P 一并紧凑放在同一行；数字与单位间不插空格。
 
 | 参数 | FM | AM | LSB / USB |
 | --- | --- | --- | --- |
@@ -117,13 +117,13 @@ SEEK 版本验证：构建/刷入哈希校验、原生模型测试和 `test/seek
 | AGC | AUTO 或 ATT 0–26 | AUTO 或 ATT 0–37 | AUTO 或 ATT 0–37 |
 | SM | OFF（0）至 31 dB | OFF（0）至 31 dB | OFF（0）至 31 dB |
 
-带宽旋转按数值顺序循环；AGC 与 SM 在端点停止。ATT 数值是芯片增益索引，不是 dB；值越大衰减越大。SM 设置最大软静音衰减，不是 SQL 门限；本界面统一提供 0–31 dB 的范围。各解调模式分别保留参数到 RAM，切换模式恢复，重启回到默认值（FM 的 SM 为 16 dB，AM/SSB 为 OFF）。修改只写接收参数，不重载 SSB 补丁或重设频率。
+带宽旋转按数值顺序循环；AGC 与 SM 在端点停止。ATT 数值是芯片增益索引，不是 dB；值越大衰减越大。SM 设置最大软静音衰减，不是 SQL 门限；本界面统一提供 0–31 dB 的范围。各解调模式分别保留参数，切换模式恢复，保存到 NVS 后重启恢复。首次启动默认 FM 的 SM 为 16 dB，AM/SSB 为 OFF。修改只写接收参数，不重载 SSB 补丁或重设频率。
 
 FM 使用 FM_CHANNEL_FILTER / FM_AGC_OVERRIDE / FM_SOFT_MUTE_MAX_ATTENUATION；AM 使用 AM_CHANNEL_FILTER / AM_AGC_OVERRIDE / AM_SOFT_MUTE_MAX_ATTENUATION；SSB 使用补丁的 SSB_MODE / AM_AGC_OVERRIDE / SSB_SOFT_MUTE_MAX_ATTENUATION，保持 AVC 开启与 AFC 禁用，窄于等于 2 kHz 时 SBCUTFLT=0。来源：[Skyworks AN332](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf)、[PU2CLR SSB 配置](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html)。
 
 红色指针下方始终显示当前模型频率及单位，SSB 保留 1 Hz 精度；仅避让附近的文字标签，不改变刻度间隔、连续基线或频段边界。
 
-大字区域靠左显示频率；收到确认的 RDS PS 时显示电台名，收到 RT 时显示广播文本，两者都有则 PS 停留 5 秒后显示 RT，并留足一次完整滚动的时间。长文本按 35 ms/像素水平滚动，起止各停留 1.2 秒，裁剪在主显示区内，文字更新后从头开始。没有有效 RDS，或正在调谐/搜索时显示频率。
+大字区域靠左显示频率，较小的 MHz/kHz 单位紧随数字并对齐底部；收到确认的 RDS PS 时显示电台名，收到 RT 时显示广播文本，两者都有则 PS 停留 5 秒后显示 RT，并留足一次完整滚动的时间。长文本按 35 ms/像素水平滚动，起止各停留 1.2 秒，裁剪在主显示区内，文字更新后从头开始。没有有效 RDS，或正在调谐/搜索时显示频率。
 
 使用 LovyanGFX 自带 `efontCN_24` 中文字库渲染名称/文本，频率保持原来的大号数字。RDS 传输不是 UTF-8：当前解码器支持可打印 ASCII，其他字符显示 `?`；引入中文字库不等于已支持非标准中文 RDS 编码，后续需针对实际广播字符集补充转换。
 
@@ -147,3 +147,25 @@ clang++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -Itest/nat
 原生测试覆盖 PS/RT 完整消息确认、乱序 PS、纠错门限、RT A/B/版本切换、PI 切换，以及真实驱动对模拟总线的命令字节、FIFO 最后一组/空 FIFO/同步丢失和调频/SEEK 清理。模拟总线不能证明实际 RF 收到 RDS；需在发送 RDS 的 FM 台上进一步验证。
 
 2026-10-13 此版本验证：构建与刷入哈希校验通过；模型、RDS PS/RT、模拟总线驱动测试均通过。实机 `reception_smoke.py` 验证 FM/AM/SSB 带宽选择、AGC 自动/手动端点、SM 调节及模式间参数恢复，`seek_smoke.py` 验证新增焦点后原有 SEEK、取消、限频与长按静音交互。当前 RF 环境尚未取得有效 PS/RT，因此未宣称实机电台文本或中文广播解码已经验证。设备最终恢复 FM 100 MHz、音量 18、手动调谐。
+
+
+## 掉电记忆
+
+用户停止调节两秒，且调谐/SEEK 已结束后，将完整选择保存到 ESP32 NVS：当前频段，各可用频段的频率/模式/步进，音量、亮度、静音，以及各解调模式的 BW/AGC/SM。开机先加载，再设置背光和收音芯片；焦点从频段开始，SEEK 始终以手动状态启动。只切换焦点、RSSI/RDS 更新或重试芯片不会触发写入；选择没有变化也不重复写入。最后两秒内的尚未保存操作在立即断电时不会恢复。
+
+NVS 资源在 `src/hal/settings_storage.*`；版本化的选择编码在 `src/radio/saved_settings.*`；模型通过 `state()` / `restore()` 交换每频段的语义值，不暴露内部步进索引。存储使用固定大小 96 字节、明确的小端字段、版本/频段数量与 CRC32；未知版本、损坏记录、不支持频段/模式、越界频率、非法步进或接收参数回退默认设置。写入失败每十秒重试，继续保留原来的已保存选择，不影响正常收音。
+
+首次启动默认 VHF/FM 100 MHz，音量 18、亮度 128、未静音。正常固件更新不擦除 NVS 分区，因此兼容版本保留选择。原有按默认参数编写的硬件/SEEK/接收参数测试，需要默认测试配置；仅重启不再重置已保存选择。
+
+```sh
+clang++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc \
+  test/native/persistence_test.cpp src/radio/model.cpp src/radio/saved_settings.cpp -o /tmp/ats-mini-persistence-test
+/tmp/ats-mini-persistence-test
+~/.platformio/penv/bin/python test/persistence_smoke.py /dev/cu.usbmodem21101
+```
+
+持久化实机测试会改变各频段记忆及接收参数并重启两次，最后将当前状态恢复为 VHF/FM 100 MHz、100 kHz 步进、音量 18、亮度 128、未静音、BW AUTO、AGC AUTO、SM 16 dB，其余频段保留测试记忆。原生测试覆盖精确 SSB 频率、多频段/模式参数往返、记录每一字节的损坏拒绝及失败恢复的原子性。实机测试覆盖重启恢复、跨频段恢复、模式接收参数恢复，以及连续调节期间不写入、停止两秒只写一次。USB 诊断 `brightness` / `stored` / `save` / `writes` 分别表示背光值、存在有效已保存记录、有待保存变化、本次启动写入次数。
+
+AFC OK 表示芯片未报告频率校正达到调节边缘，AFC! 表示达到边缘，AFC -- 表示尚未取得稳定质量状态；SSB 的 AFC 由补丁配置禁用。P0/P1 是 FM 导频检测标志，RF 后的数值是芯片当前增益索引，不是 dB。SM 生效时只将选框文字改为橙色，边框继续使用黄色表示聚焦、青色表示普通选中值；不另外显示 SM*。
+
+最终紧凑布局刷入后，已有 NVS 选择继续恢复，未被固件更新重置；主显示单位紧随频率数字，STEP 选框位于 RSSI 行最右侧，SEEK 与箭头使用亮紫色。

@@ -11,6 +11,28 @@ Model::Model() {
     memories_[i] = {bands[i].initialHz, bands[i].fm ? Mode::FM : Mode::AM,
                    uint8_t(bands[i].fm || i == 1 ? 2 : 0)};
 }
+Model::State Model::state() const {
+  State result{}; result.band = bandIndex_;
+  for (size_t i = 0; i < bandCount; ++i)
+    result.memories[i] = {memories_[i].hz, memories_[i].mode, stepForBand(i)};
+  return result;
+}
+bool Model::restore(const State& state) {
+  if (state.band >= bandCount || !bands[state.band].available) return false;
+  Model candidate;
+  for (size_t i = 0; i < bandCount; ++i) {
+    if (!bands[i].available) continue;
+    const auto& memory = state.memories[i];
+    if (!candidate.setBand(i) || !candidate.setMode(memory.mode) || !candidate.setFrequency(memory.frequencyHz)) return false;
+    bool found = false;
+    for (int step = 0; step < (drivers::isSsb(memory.mode) ? 5 : 4); ++step) {
+      if (candidate.stepHz() == memory.stepHz) { found = true; break; }
+      candidate.turnStep(1);
+    }
+    if (!found) return false;
+  }
+  candidate.setBand(state.band); *this = candidate; return true;
+}
 uint32_t Model::stepHz() const { return stepForBand(bandIndex_); }
 uint32_t Model::stepForBand(size_t index) const {
   const auto& m = memories_[index];

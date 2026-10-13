@@ -17,7 +17,11 @@ inline bool allowed(const Band& band, Mode mode) {
 }
 class Model {
 public:
+  struct BandMemory { uint32_t frequencyHz; Mode mode; uint32_t stepHz; };
+  struct State { size_t band; BandMemory memories[bandCount]; };
   Model();
+  State state() const;
+  bool restore(const State& state); // Validate all available bands before committing.
   const Band& band() const { return bands[bandIndex_]; }
   size_t bandIndex() const { return bandIndex_; }
   Mode mode() const { return memories_[bandIndex_].mode; }
