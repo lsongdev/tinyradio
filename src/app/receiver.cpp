@@ -1,6 +1,8 @@
 #include "receiver.h"
 #include "drivers/si473x/si473x.h"
 #include "radio/model.h"
+#include "radio/saved_settings.h"
+#include "hal/settings_storage.h"
 #include "hal/audio.h"
 #include "hal/battery.h"
 #include "hal/board.h"
@@ -25,6 +27,10 @@ int volume = 18, appliedVolume = -1;
 int brightness = 128;
 drivers::ReceptionSettings reception[] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
 bool receptionDirty = true;
+hal::SettingsStorage storage;
+radio::SettingsBytes observedSettings{}, storedSettings{};
+bool storageReady = false, settingsStored = false, savePending = false;
+uint32_t lastSettingsChange = 0, lastSaveAttempt = 0, settingsWrites = 0;
 auto settings() -> drivers::ReceptionSettings& { return reception[static_cast<unsigned>(model.mode())]; }
 void frequencyText(char* text, size_t size, bool unit) {
   const uint32_t hz = model.frequencyHz();
@@ -33,14 +39,46 @@ void frequencyText(char* text, size_t size, bool unit) {
   else snprintf(text, size, "%lu%s", static_cast<unsigned long>(hz / 1000), unit ? "kHz" : "");
 }
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
+radio::SavedSettings savedSettings() {
+  radio::SavedSettings saved; saved.tuning = model.state();
+  saved.volume = volume; saved.brightness = brightness; saved.muted = muted;
+  for (int i = 0; i < 4; ++i) saved.reception[i] = reception[i];
+  return saved;
+}
 bool reconfigure = true, held = false, previousPressed = false, audioReady = false, seekMode = false;
 int pendingSeek = 0, seekDirection = 0;
 uint32_t pressedAt = 0, editedAt = 0, lastSignal = 0, lastBattery = 0, lastDraw = 0, lastTune = 0, lastRds = 0;
+void loadSettings() {
+  storageReady = storage.begin();
+  radio::SettingsBytes bytes{}; radio::SavedSettings saved;
+  if (storageReady && storage.load(bytes.data(), bytes.size()) && radio::decodeSettings(bytes, saved)) {
+    model.restore(saved.tuning); volume = saved.volume; brightness = saved.brightness; muted = saved.muted;
+    for (int i = 0; i < 4; ++i) reception[i] = saved.reception[i];
+    settingsStored = true;
+  }
+  radio::encodeSettings(savedSettings(), observedSettings); storedSettings = observedSettings;
+  Serial.printf("Settings: %s\n", !storageReady ? "NVS unavailable" : settingsStored ? "restored" : "defaults");
+}
+void rememberSettings(uint32_t now) {
+  radio::SettingsBytes bytes{};
+  if (!storageReady || !radio::encodeSettings(savedSettings(), bytes)) return;
+  if (bytes != observedSettings) {
+    observedSettings = bytes; lastSettingsChange = now;
+    savePending = !settingsStored || observedSettings != storedSettings;
+  }
+  if (!savePending || now - lastSettingsChange < 2000 || chip.tuning() || chip.seeking() ||
+      pendingSeek || (reconfigure && !failed) || (lastSaveAttempt && now - lastSaveAttempt < 10000)) return;
+  lastSaveAttempt = now;
+  if (storage.save(observedSettings.data(), observedSettings.size())) {
+    storedSettings = observedSettings; settingsStored = true; savePending = false;
+    lastSaveAttempt = 0; ++settingsWrites; Serial.println("Settings: saved");
+  } else Serial.println("Settings: save failed; retry in 10s");
+}
 void report() {
   const auto& s = chip.signal();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d mute=%d tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] error=%s\n",
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
-    static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, muted,
+    static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, brightness, muted, settingsStored, savePending, static_cast<unsigned long>(settingsWrites),
     chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
@@ -144,7 +182,7 @@ void draw() {
   const uint32_t hz = model.frequencyHz(); char frequency[20];
   frequencyText(frequency, sizeof frequency, false);
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
-  g.setTextColor(failed ? TFT_RED : seekMode ? TFT_ORANGE : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
+  g.setTextColor(failed ? TFT_RED : seekMode ? TFT_MAGENTA : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
   const bool showPs = !failed && !pending && !seekMode && chip.rdsPs()[0];
   g.setFont(&fonts::efontCN_24); g.setTextSize(1);
   const int rtWidth = g.textWidth(chip.rdsText());
@@ -166,14 +204,14 @@ void draw() {
     const uint32_t phase = (millis() - scrollStarted) % (travel + 2400);
     offset = phase < 1200 ? 0 : phase < travel + 1200 ? (phase - 1200) / 35 : textWidth - regionWidth;
   }
-  g.setClipRect(8, 23, regionWidth, 38); g.drawString(mainText, 8 - offset, 43); g.clearClipRect();
+  g.setClipRect(8, 23, regionWidth, 38); g.drawString(mainText, 8 - offset, 43);
   g.setFont(&fonts::Font0); g.setTextSize(1);
-  g.setTextDatum(lgfx::textdatum_t::middle_right); g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  g.drawString(showRt ? "RDS RT" : showPs ? "RDS PS" : model.band().fm ? "MHz" : "kHz", 312, 61);
+  if (!showPs && !showRt) g.drawString(model.band().fm ? "MHz" : "kHz", 8 + textWidth + 3 - offset, 51);
+  g.clearClipRect();
   if (seekMode && (chip.seeking() || pendingSeek)) {
     const int direction = pendingSeek ? pendingSeek : seekDirection;
-    if (direction > 0) g.fillTriangle(303, 39, 303, 53, 312, 46, TFT_ORANGE);
-    else g.fillTriangle(17, 39, 17, 53, 8, 46, TFT_ORANGE);
+    if (direction > 0) g.fillTriangle(303, 39, 303, 53, 312, 46, TFT_MAGENTA);
+    else g.fillTriangle(294, 39, 294, 53, 285, 46, TFT_MAGENTA);
   }
   g.setTextDatum(lgfx::textdatum_t::middle_center);
   for (int i = 0; i < 4; ++i) {
@@ -183,9 +221,12 @@ void draw() {
     g.drawRect(x, 70, 26, 17, ink);
     g.setTextColor(ink, TFT_BLACK); g.drawString(drivers::modeName(mode), x + 13, 78);
   }
+  const auto& signal = chip.signal();
+  const bool stable = !failed && !pending && signal.qualityKnown;
   const auto option = [&](Field focus, int x, int width, const char* label) {
+    const bool smActive = focus == Field::SoftMute && stable && settings().softMuteDb && signal.softMuted;
     const uint16_t ink = field == focus ? TFT_YELLOW : TFT_CYAN;
-    g.drawRect(x, 70, width, 17, ink); g.setTextColor(ink, TFT_BLACK);
+    g.drawRect(x, 70, width, 17, ink); g.setTextColor(smActive ? TFT_ORANGE : ink, TFT_BLACK);
     g.drawString(label, x + width / 2, 78);
   };
   char label[24]; int count; const auto* options = drivers::bandwidths(model.mode(), count);
@@ -199,29 +240,32 @@ void draw() {
   if (!settings().softMuteDb) snprintf(label, sizeof label, "SM OFF"); else snprintf(label, sizeof label, "SM %udB", settings().softMuteDb);
   option(Field::SoftMute, 258, 59, label);
   g.setTextDatum(lgfx::textdatum_t::top_left);
-  const auto& signal = chip.signal();
-  const bool stable = !failed && !pending && signal.qualityKnown;
   const int bars = stable ? constrain((signal.rssi + 5) / 6, 0, 10) : 0;
   for (int i = 0; i < 10; ++i)
-    g.fillRect(8 + i * 4, 95, 3, 8, i < bars ? TFT_GREEN : TFT_DARKGREY);
-  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(54, 95);
-  if (stable) g.printf("%u dBuV", signal.rssi); else g.print("-- dBuV");
-  g.setCursor(114, 95); if (stable) g.printf("SN %udB", signal.snr); else g.print("SN --");
-  g.setCursor(181, 95);
-  g.setTextColor(stable && signal.valid ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK);
-  if (stable) g.print(signal.valid ? "VALID" : "INVALID"); else g.print("--");
-  g.setCursor(245, 95); g.setTextColor(failed ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK);
-  if (failed) g.print("ERROR"); else if (pending) g.print(chip.seeking() ? "SEEK" : "TUNING");
-  else if (model.band().fm) g.printf("P %u", signal.pilot);
+    g.fillRect(8 + i * 3, 95, 2, 8, i < bars ? TFT_GREEN : TFT_DARKGREY);
+  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(42, 95);
+  if (stable) g.printf("%udBuV", signal.rssi); else g.print("--dBuV");
+  g.setCursor(90, 95); if (stable) g.printf("SN%udB", signal.snr); else g.print("SN--dB");
+  g.setCursor(138, 95);
+  g.setTextColor(failed ? TFT_RED : stable && signal.valid ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK);
+  if (failed) g.print("ERROR");
+  else if (pending) g.print(chip.seeking() ? "SEEK" : "TUNING");
+  else if (stable) g.print(signal.valid ? "VALID" : "INVALID"); else g.print("--");
 
-  g.setTextColor(field == Field::Step ? TFT_YELLOW : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(8, 115);
-  if (model.stepHz() >= 1000) g.printf("STEP %lukHz", static_cast<unsigned long>(model.stepHz() / 1000));
-  else g.printf("STEP %luHz", static_cast<unsigned long>(model.stepHz()));
-  g.setTextColor(stable && signal.afcRail ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(110, 115);
+  const uint16_t stepInk = field == Field::Step ? TFT_YELLOW : TFT_CYAN;
+  g.drawRect(278, 91, 39, 17, stepInk); g.setTextColor(stepInk, TFT_BLACK);
+  g.setTextDatum(lgfx::textdatum_t::middle_center);
+  if (model.stepHz() >= 1000) snprintf(label, sizeof label, "%lukHz", static_cast<unsigned long>(model.stepHz() / 1000));
+  else snprintf(label, sizeof label, "%luHz", static_cast<unsigned long>(model.stepHz()));
+  g.drawString(label, 297, 99); g.setTextDatum(lgfx::textdatum_t::top_left);
+  g.setTextColor(stable && signal.afcRail ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(186, 95);
   g.print(!stable ? "AFC --" : signal.afcRail ? "AFC!" : "AFC OK");
-  g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(225, 115);
-  if (failed) g.print("ERROR"); else if (muted) g.print("MUTE");
-  else if (stable) { g.setTextColor(signal.softMuted ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK); g.printf("RF %u%s", signal.gainIndex, signal.softMuted ? " SM*" : ""); }
+  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(228, 95);
+  if (stable) g.printf("RF%u", signal.gainIndex); else g.print("RF--");
+  if (model.band().fm) {
+    g.setCursor(258, 95); if (stable) g.printf("P%u", signal.pilot); else g.print("P--");
+  }
+  if (failed) { g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(8, 115); g.print(chip.errorText()); }
   drawRuler(g);
   if (buffered) frame.pushSprite(0, 0);
 }
@@ -322,7 +366,9 @@ void serialInput() {
 namespace app {
 void beginReceiver() {
   Serial.begin(115200); audio.begin(); battery.begin(); encoder.begin(); button.begin();
+  loadSettings();
   lcd = display.begin();
+  if (lcd) display.setBrightness(brightness);
   if (lcd) { frame.setColorDepth(16); buffered = frame.createSprite(320, 170) != nullptr; }
   supply = battery.read();
   hardware.begin(); hardware.setPowered(true); hardware.reset();
@@ -397,6 +443,7 @@ void updateReceiver() {
   }
   if (now - lastBattery >= 1000) { lastBattery = now; supply = battery.read(); dirty = true; }
   if (chip.rdsText()[0] && now - lastDraw >= 50) dirty = true;
+  rememberSettings(now);
   if (dirty && now - lastDraw >= 50) { dirty = false; lastDraw = now; if (lcd) draw(); }
   delay(1);
 }
