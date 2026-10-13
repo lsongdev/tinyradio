@@ -19,9 +19,10 @@ hal::Audio audio;
 hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
-enum class Field { Frequency, Band, Mode, Step, Volume, Brightness };
-Field field = Field::Frequency;
-int volume = 18, appliedVolume = -1, brightness = 128;
+enum class Field { Band, Frequency, Mode, Step, Volume };
+Field field = Field::Band;
+int volume = 18, appliedVolume = -1;
+constexpr int brightness = 128;
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
 bool reconfigure = true, held = false, previousPressed = false, audioReady = false;
 uint32_t pressedAt = 0, editedAt = 0, lastSignal = 0, lastBattery = 0, lastDraw = 0, lastTune = 0;
@@ -53,6 +54,11 @@ void drawRuler(lgfx::LGFXBase& g) {
     radio::Model preview = model;
     preview.turnFrequency(offset); // Same cross-band semantics as the encoder.
     const uint32_t hz = preview.frequencyHz();
+    if (offset) {
+      radio::Model closer = model;
+      closer.turnFrequency(offset > 0 ? offset - 1 : offset + 1);
+      if (closer.bandIndex() == preview.bandIndex() && closer.frequencyHz() == hz) continue;
+    }
     const int x = 160 + offset * 12;
     const bool major = (hz / preview.stepHz()) % 5 == 0;
     const bool boundary = preview.bandIndex() != model.bandIndex();
@@ -77,12 +83,12 @@ void draw() {
     const int x = 3 + i * 28;
     const bool active = model.bandIndex() == i;
     const uint16_t color = !radio::bands[i].available ? TFT_DARKGREY : active ? (field == Field::Band ? TFT_YELLOW : TFT_CYAN) : TFT_LIGHTGREY;
-    g.drawRoundRect(x, 2, 26, 17, 3, color);
+    g.drawRect(x, 2, 26, 17, color);
     g.setTextDatum(lgfx::textdatum_t::middle_center); g.setTextColor(color, TFT_BLACK);
     g.drawString(radio::bands[i].name, x + 13, 10);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
-  uint16_t color = field == Field::Brightness ? TFT_YELLOW : TFT_LIGHTGREY;
+  uint16_t color = TFT_LIGHTGREY;
   drawSun(g, 176, color); g.setTextColor(color, TFT_BLACK);
   g.setCursor(192, 7); g.printf("%d%%", (brightness * 100 + 127) / 255);
   color = field == Field::Volume ? TFT_YELLOW : muted ? TFT_RED : TFT_LIGHTGREY;
@@ -106,7 +112,7 @@ void draw() {
     const auto mode = static_cast<drivers::Mode>(i); const int x = 8 + i * 78;
     const bool active = model.mode() == mode;
     const uint16_t ink = !radio::allowed(model.band(), mode) ? TFT_DARKGREY : active ? (field == Field::Mode ? TFT_YELLOW : TFT_CYAN) : TFT_LIGHTGREY;
-    g.drawRoundRect(x, 79, 70, 22, 3, ink);
+    g.drawRect(x, 79, 70, 22, ink);
     g.setTextColor(ink, TFT_BLACK); g.drawString(drivers::modeName(mode), x + 35, 90);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
@@ -149,7 +155,6 @@ void turn(int delta) {
     case Field::Mode: model.turnMode(delta); changedConfiguration(); break;
     case Field::Step: model.turnStep(delta); break;
     case Field::Volume: volume = constrain(volume + delta, 0, 63); break;
-    case Field::Brightness: brightness = constrain(brightness + delta * 8, 8, 255); if (lcd) display.setBrightness(brightness); break;
   }
   dirty = true;
 }
@@ -195,7 +200,7 @@ void updateReceiver() {
   }
   if (!button.pressed() && previousPressed && !held) {
     if (failed) retry();
-    else field = static_cast<Field>((static_cast<int>(field) + 1) % 6);
+    else field = static_cast<Field>((static_cast<int>(field) + 1) % 5);
     dirty = true;
   }
   previousPressed = button.pressed();
