@@ -4,7 +4,27 @@ namespace {
 constexpr uint32_t fmSteps[] = {10000, 50000, 100000, 200000};
 constexpr uint32_t amSteps[] = {1000, 5000, 9000, 10000};
 constexpr uint32_t ssbSteps[] = {10, 50, 100, 500, 1000};
+constexpr uint32_t swAmSteps[] = {1000, 5000, 9000, 10000, 100000};
+constexpr uint32_t swSsbSteps[] = {10, 50, 100, 500, 1000, 10000, 100000};
 int wrap(int value, int size) { return (value % size + size) % size; }
+}
+uint32_t stepOption(size_t bandIndex, Mode mode, int index) {
+  if (mode == Mode::FM) return index >= 0 && index < 4 ? fmSteps[index] : 0;
+  if (bandIndex == 2 && drivers::isSsb(mode)) return index >= 0 && index < 7 ? swSsbSteps[index] : 0;
+  if (bandIndex == 2) return index >= 0 && index < 5 ? swAmSteps[index] : 0;
+  if (drivers::isSsb(mode)) return index >= 0 && index < 5 ? ssbSteps[index] : 0;
+  return index >= 0 && index < 4 ? amSteps[index] : 0;
+}
+uint8_t stepOptionCount(size_t bandIndex, Mode mode) {
+  if (mode == Mode::FM) return 4;
+  if (bandIndex == 2 && drivers::isSsb(mode)) return 7;
+  if (bandIndex == 2) return 5;
+  return drivers::isSsb(mode) ? 5 : 4;
+}
+int stepOptionIndex(size_t bandIndex, Mode mode, uint32_t stepHz) {
+  for (int i = 0; i < stepOptionCount(bandIndex, mode); ++i)
+    if (stepOption(bandIndex, mode, i) == stepHz) return i;
+  return -1;
 }
 Model::Model() {
   for (size_t i = 0; i < bandCount; ++i)
@@ -24,19 +44,18 @@ bool Model::restore(const State& state) {
     if (!bands[i].available) continue;
     const auto& memory = state.memories[i];
     if (!candidate.setBand(i) || !candidate.setMode(memory.mode) || !candidate.setFrequency(memory.frequencyHz)) return false;
-    bool found = false;
-    for (int step = 0; step < (drivers::isSsb(memory.mode) ? 5 : 4); ++step) {
-      if (candidate.stepHz() == memory.stepHz) { found = true; break; }
-      candidate.turnStep(1);
-    }
-    if (!found) return false;
+    const int stepIndex = stepOptionIndex(i, memory.mode, memory.stepHz);
+    if (stepIndex < 0) return false;
+    const int currentStepIndex = stepOptionIndex(i, memory.mode, candidate.stepHz());
+    if (currentStepIndex < 0) return false;
+    candidate.turnStep(stepIndex - currentStepIndex);
   }
   candidate.setBand(state.band); *this = candidate; return true;
 }
 uint32_t Model::stepHz() const { return stepForBand(bandIndex_); }
 uint32_t Model::stepForBand(size_t index) const {
   const auto& m = memories_[index];
-  return m.mode == Mode::FM ? fmSteps[m.step] : drivers::isSsb(m.mode) ? ssbSteps[m.step] : amSteps[m.step];
+  return stepOption(index, m.mode, m.step);
 }
 bool Model::setBand(size_t index) {
   if (index >= bandCount || !bands[index].available) return false;
@@ -95,6 +114,6 @@ void Model::turnMode(int turns) {
 }
 void Model::turnStep(int turns) {
   auto& m = memories_[bandIndex_];
-  m.step = wrap(m.step + turns, drivers::isSsb(m.mode) ? 5 : 4);
+  m.step = wrap(m.step + turns, stepOptionCount(bandIndex_, m.mode));
 }
 }
