@@ -19,7 +19,7 @@ hal::Audio audio;
 hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
-enum class Field { Band, Frequency, Mode, Step, Volume, Brightness, Bandwidth, Gain, SoftMute, Count };
+enum class Field { Band, Frequency, Mode, Bandwidth, Gain, SoftMute, Step, Volume, Brightness, Count };
 Field field = Field::Band;
 int volume = 18, appliedVolume = -1;
 int brightness = 128;
@@ -144,7 +144,7 @@ void draw() {
   const uint32_t hz = model.frequencyHz(); char frequency[20];
   frequencyText(frequency, sizeof frequency, false);
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
-  g.setTextColor(failed ? TFT_RED : seekMode ? TFT_ORANGE : field == Field::Frequency ? TFT_CYAN : TFT_WHITE, TFT_BLACK);
+  g.setTextColor(failed ? TFT_RED : seekMode ? TFT_ORANGE : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
   const bool showPs = !failed && !pending && !seekMode && chip.rdsPs()[0];
   g.setFont(&fonts::efontCN_24); g.setTextSize(1);
   const int rtWidth = g.textWidth(chip.rdsText());
