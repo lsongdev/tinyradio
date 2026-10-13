@@ -2,7 +2,7 @@
 """Render the firmware's 320x170 frequency ruler as an SVG preview.
 
 Example:
-  python3 tools/render_ruler.py --band SW --frequency 25.9MHz --step 100k \
+  python3 tools/render_ruler.py --band SW --frequency 25.5MHz --step 100k \
       --output /tmp/sw-ruler.svg
 
 The ruler geometry, band limits, tuning-step transitions, endpoint clamping,
@@ -134,34 +134,64 @@ def render(band_name: str, frequency: int, step: int, output: Path) -> None:
         '<rect x="0" y="128" width="320" height="52" fill="#000"/>',
         '<line x1="0" y1="140" x2="320" y2="140" stroke="#424242"/>',
     ]
+    def is_edge(index):
+        return ((index > 0 and ticks[index - 1]["valid"] and
+                 ticks[index - 1]["band"] != ticks[index]["band"]) or
+                (index < 26 and ticks[index + 1]["valid"] and
+                 ticks[index + 1]["band"] != ticks[index]["band"]))
+
+    def edge_label_x(index):
+        tick = ticks[index]
+        if tick["band"] == 2 and index < 26 and ticks[index + 1]["band"] != tick["band"]:
+            for j in range(index - 1, -1, -1):
+                if (not ticks[j]["valid"] or ticks[j]["band"] != tick["band"] or
+                        is_edge(j)):
+                    continue
+                if (ticks[j]["hz"] // ticks[j]["step"]) % 5 == 0:
+                    return ticks[j]["x"] + 5 * TICK_GAP
+        if tick["band"] == 3 and index > 0 and ticks[index - 1]["band"] == 2:
+            sw_label_x = ticks[index - 1]["x"]
+            for j in range(index - 2, -1, -1):
+                if (not ticks[j]["valid"] or ticks[j]["band"] != 2 or
+                        is_edge(j)):
+                    continue
+                if (ticks[j]["hz"] // ticks[j]["step"]) % 5 == 0:
+                    sw_label_x = ticks[j]["x"] + 5 * TICK_GAP
+                    break
+            return sw_label_x + 21
+        previous_band = index > 0 and ticks[index - 1]["band"] != tick["band"]
+        return tick["x"] + (6 if previous_band else -6)
+
     for i, tick in enumerate(ticks):
         if not tick["valid"] or not 0 <= tick["x"] < WIDTH:
             continue
-        edge = ((i > 0 and ticks[i - 1]["valid"] and ticks[i - 1]["band"] != tick["band"]) or
-                (i < 26 and ticks[i + 1]["valid"] and ticks[i + 1]["band"] != tick["band"]))
+        edge = is_edge(i)
         major = edge or (tick["hz"] // tick["step"]) % 5 == 0
-        near_edge = any(
-            ((i >= distance and ticks[i - distance]["valid"] and
-              ticks[i - distance]["band"] != tick["band"]) or
-             (i + distance <= 26 and ticks[i + distance]["valid"] and
-              ticks[i + distance]["band"] != tick["band"]))
-            for distance in range(1, 5)
-        )
         adjacent = tick["band"] != band_index
         tick_color = "#00ffff" if adjacent else "#d3d3d3" if major else "#505050"
         parts.append(f'<line x1="{tick["x"]}" y1="140" x2="{tick["x"]}" '
                      f'y2="{140 + (12 if major else 6)}" stroke="{tick_color}"/>')
 
-        if not major or (not edge and near_edge):
+        if not major:
             continue
         if edge:
             label = BANDS[tick["band"]].name
-            previous_band = i > 0 and ticks[i - 1]["band"] != tick["band"]
-            label_x = tick["x"] + (6 if previous_band else -6)
+            label_x = edge_label_x(i)
         else:
             label = short_frequency(tick["hz"])
             label_x = tick["x"]
         label_width = 6 * len(label)
+        collides_with_band_name = False
+        if not edge:
+            for j, other in enumerate(ticks):
+                if not other["valid"] or not is_edge(j):
+                    continue
+                other_width = 6 * len(BANDS[other["band"]].name)
+                if abs(label_x - edge_label_x(j)) * 2 < label_width + other_width + 2:
+                    collides_with_band_name = True
+                    break
+        if collides_with_band_name:
+            continue
         if not (label_x + label_width / 2 < CENTER - current_width / 2 - 6 or
                 label_x - label_width / 2 > CENTER + current_width / 2 + 6):
             continue
@@ -186,7 +216,7 @@ def render(band_name: str, frequency: int, step: int, output: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--band", choices=INDEX, default="SW")
-    parser.add_argument("--frequency", type=parse_frequency, default=parse_frequency("25MHz"),
+    parser.add_argument("--frequency", type=parse_frequency, default=parse_frequency("25.5MHz"),
                         help="center frequency, e.g. 25.9MHz or 25900000")
     parser.add_argument("--step", type=parse_step, default=parse_step("100k"),
                         help="current band's tuning step, e.g. 100k or 10k")

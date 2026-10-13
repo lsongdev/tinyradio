@@ -11,6 +11,7 @@
 #include "hal/display.h"
 #include "hal/encoder.h"
 #include "hal/radio.h"
+#include <stdlib.h>
 namespace {
 hal::Display display;
 lgfx::LGFX_Sprite frame(&display);
@@ -122,36 +123,60 @@ void drawRuler(lgfx::LGFXBase& g) {
   const int currentWidth = g.textWidth(current);
   g.drawFastHLine(0, 140, 320, TFT_DARKGREY);
   g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
+  const auto isEdge = [&](int index) {
+    return (index > 0 && ticks[index - 1].valid && ticks[index - 1].band != ticks[index].band) ||
+           (index < 26 && ticks[index + 1].valid && ticks[index + 1].band != ticks[index].band);
+  };
+  const auto edgeLabelX = [&](int index) {
+    const auto& tick = ticks[index];
+    if (tick.band == 2 && index < 26 && ticks[index + 1].band != tick.band) {
+      for (int j = index - 1; j >= 0; --j) {
+        if (!ticks[j].valid || ticks[j].band != tick.band || isEdge(j)) continue;
+        if ((ticks[j].hz / ticks[j].step) % 5 == 0) return ticks[j].x + 5 * spacing;
+      }
+    }
+    if (tick.band == 3 && index > 0 && ticks[index - 1].band == 2) {
+      int swLabelX = ticks[index - 1].x;
+      for (int j = index - 2; j >= 0; --j) {
+        if (!ticks[j].valid || ticks[j].band != 2 || isEdge(j)) continue;
+        if ((ticks[j].hz / ticks[j].step) % 5 == 0) {
+          swLabelX = ticks[j].x + 5 * spacing;
+          break;
+        }
+      }
+      return swLabelX + 21;
+    }
+    return tick.x + (index > 0 && ticks[index - 1].band != tick.band ? 6 : -6);
+  };
   for (int i = 0; i < 27; ++i) {
     const auto& tick = ticks[i];
     if (!tick.valid || tick.x < 0 || tick.x >= 320) continue;
-    const bool edge = (i > 0 && ticks[i - 1].valid && ticks[i - 1].band != tick.band) ||
-                      (i < 26 && ticks[i + 1].valid && ticks[i + 1].band != tick.band);
+    const bool edge = isEdge(i);
     const bool major = edge || (tick.hz / tick.step) % 5 == 0;
-    bool nearBandEdge = false;
-    for (int distance = 1; distance < 5; ++distance) {
-      if ((i >= distance && ticks[i - distance].valid && ticks[i - distance].band != tick.band) ||
-          (i + distance <= 26 && ticks[i + distance].valid && ticks[i + distance].band != tick.band)) {
-        nearBandEdge = true;
-        break;
-      }
-    }
     const bool adjacent = tick.band != model.bandIndex();
     g.drawFastVLine(tick.x, 140, major ? 12 : 6, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
-    if (major && (edge || !nearBandEdge)) {
+    if (major) {
       char label[20];
       if (edge) snprintf(label, sizeof label, "%s", radio::bands[tick.band].name);
       else {
         const auto tickFrequency = radio::formatFrequency(tick.hz);
         snprintf(label, sizeof label, "%s%c", tickFrequency.number, tick.hz >= 1000000 ? 'M' : 'k');
       }
-      // Keep frequency labels one major division away from band names. Labels
-      // stay centered on their ticks; only values close to the edge are hidden.
-      const int labelX = edge
-          ? tick.x + (i > 0 && ticks[i - 1].band != tick.band ? 6 : -6)
-          : tick.x;
+      const int labelX = edge ? edgeLabelX(i) : tick.x;
       const int labelWidth = g.textWidth(label);
-      if (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6) {
+      bool collidesWithBandName = false;
+      if (!edge) {
+        for (int j = 0; j < 27; ++j) {
+          if (!ticks[j].valid || !isEdge(j)) continue;
+          const int nameWidth = g.textWidth(radio::bands[ticks[j].band].name);
+          if (abs(labelX - edgeLabelX(j)) * 2 < labelWidth + nameWidth + 2) {
+            collidesWithBandName = true;
+            break;
+          }
+        }
+      }
+      if (!collidesWithBandName &&
+          (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6)) {
         g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
       }
     }
