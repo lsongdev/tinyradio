@@ -19,10 +19,10 @@ hal::Audio audio;
 hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
-enum class Field { Band, Frequency, Mode, Step, Volume };
+enum class Field { Band, Frequency, Mode, Step, Volume, Brightness };
 Field field = Field::Band;
 int volume = 18, appliedVolume = -1;
-constexpr int brightness = 128;
+int brightness = 128;
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
 bool reconfigure = true, held = false, previousPressed = false, audioReady = false;
 uint32_t pressedAt = 0, editedAt = 0, lastSignal = 0, lastBattery = 0, lastDraw = 0, lastTune = 0;
@@ -48,28 +48,56 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color) {
   else { g.drawLine(x + 11, 7, x + 13, 9, color); g.drawLine(x + 13, 9, x + 13, 11, color); g.drawLine(x + 13, 11, x + 11, 13, color); }
 }
 void drawRuler(lgfx::LGFXBase& g) {
-  g.drawFastHLine(0, 130, 320, TFT_DARKGREY);
-  g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
-  for (int offset = -13; offset <= 13; ++offset) {
+  struct Tick { uint32_t hz, step; size_t band; int x; bool valid; };
+  Tick ticks[27];
+  constexpr int center = 13, spacing = 12, bandGap = 44;
+  for (int i = 0; i < 27; ++i) {
+    const int offset = i - center;
     radio::Model preview = model;
-    preview.turnFrequency(offset); // Same cross-band semantics as the encoder.
-    const uint32_t hz = preview.frequencyHz();
+    preview.turnFrequency(offset);
+    bool valid = true;
     if (offset) {
       radio::Model closer = model;
       closer.turnFrequency(offset > 0 ? offset - 1 : offset + 1);
-      if (closer.bandIndex() == preview.bandIndex() && closer.frequencyHz() == hz) continue;
+      valid = closer.bandIndex() != preview.bandIndex() || closer.frequencyHz() != preview.frequencyHz();
     }
-    const int x = 160 + offset * 12;
-    const bool major = (hz / preview.stepHz()) % 5 == 0;
-    const bool boundary = preview.bandIndex() != model.bandIndex();
-    g.drawFastVLine(x, 130, major ? 17 : 8, boundary ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
+    ticks[i] = {preview.frequencyHz(), preview.stepHz(), preview.bandIndex(), 0, valid};
+  }
+  ticks[center].x = 160;
+  for (int i = center + 1; i < 27; ++i)
+    ticks[i].x = ticks[i - 1].x + spacing + (ticks[i].band != ticks[i - 1].band ? bandGap : 0);
+  for (int i = center - 1; i >= 0; --i)
+    ticks[i].x = ticks[i + 1].x - spacing - (ticks[i].band != ticks[i + 1].band ? bandGap : 0);
+
+  g.drawFastHLine(0, 130, 320, TFT_DARKGREY);
+  g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
+  for (int i = 0; i < 27; ++i) {
+    const auto& tick = ticks[i];
+    if (!tick.valid || tick.x < 0 || tick.x >= 320) continue;
+    const bool edge = (i > 0 && ticks[i - 1].valid && ticks[i - 1].band != tick.band) ||
+                      (i < 26 && ticks[i + 1].valid && ticks[i + 1].band != tick.band);
+    const bool major = edge || (tick.hz / tick.step) % 5 == 0;
+    const bool adjacent = tick.band != model.bandIndex();
+    g.drawFastVLine(tick.x, 130, major ? 17 : 8, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
     if (major) {
       char label[20];
-      if (preview.band().fm) snprintf(label, sizeof label, "%lu.%02luM", static_cast<unsigned long>(hz / 1000000), static_cast<unsigned long>(hz % 1000000 / 10000));
-      else if (preview.stepHz() < 1000) snprintf(label, sizeof label, "%lu.%02luk", static_cast<unsigned long>(hz / 1000), static_cast<unsigned long>(hz % 1000 / 10));
-      else snprintf(label, sizeof label, "%luk", static_cast<unsigned long>(hz / 1000));
-      g.setTextColor(boundary ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, x, 151);
+      if (radio::bands[tick.band].fm) snprintf(label, sizeof label, "%lu.%02luM", static_cast<unsigned long>(tick.hz / 1000000), static_cast<unsigned long>(tick.hz % 1000000 / 10000));
+      else if (tick.step < 1000) snprintf(label, sizeof label, "%lu.%02luk", static_cast<unsigned long>(tick.hz / 1000), static_cast<unsigned long>(tick.hz % 1000 / 10));
+      else snprintf(label, sizeof label, "%luk", static_cast<unsigned long>(tick.hz / 1000));
+      g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, tick.x, 151);
     }
+  }
+  for (int i = 1; i < 27; ++i) {
+    const auto& left = ticks[i - 1]; const auto& right = ticks[i];
+    if (!left.valid || !right.valid || left.band == right.band) continue;
+    const int seam = (left.x + right.x) / 2;
+    if (seam < 0 || seam >= 320) continue;
+    // Leave a visible gap between disjoint RF ranges, with a name on each side.
+    g.fillRect(left.x + 4, 130, right.x - left.x - 8, 18, TFT_BLACK);
+    g.drawFastVLine(seam, 131, 13, TFT_DARKGREY);
+    g.setTextColor(TFT_CYAN, TFT_BLACK);
+    g.setTextDatum(lgfx::textdatum_t::top_right); g.drawString(radio::bands[left.band].name, seam - 4, 134);
+    g.setTextDatum(lgfx::textdatum_t::top_left); g.drawString(radio::bands[right.band].name, seam + 4, 134);
   }
   g.fillTriangle(155, 123, 165, 123, 160, 129, TFT_RED);
   g.drawFastVLine(160, 130, 18, TFT_RED);
@@ -88,7 +116,7 @@ void draw() {
     g.drawString(radio::bands[i].name, x + 13, 10);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
-  uint16_t color = TFT_LIGHTGREY;
+  uint16_t color = field == Field::Brightness ? TFT_YELLOW : TFT_LIGHTGREY;
   drawSun(g, 176, color); g.setTextColor(color, TFT_BLACK);
   g.setCursor(192, 7); g.printf("%d%%", (brightness * 100 + 127) / 255);
   color = field == Field::Volume ? TFT_YELLOW : muted ? TFT_RED : TFT_LIGHTGREY;
@@ -155,6 +183,7 @@ void turn(int delta) {
     case Field::Mode: model.turnMode(delta); changedConfiguration(); break;
     case Field::Step: model.turnStep(delta); break;
     case Field::Volume: volume = constrain(volume + delta, 0, 63); break;
+    case Field::Brightness: brightness = constrain(brightness + delta * 8, 8, 255); if (lcd) display.setBrightness(brightness); break;
   }
   dirty = true;
 }
@@ -200,7 +229,7 @@ void updateReceiver() {
   }
   if (!button.pressed() && previousPressed && !held) {
     if (failed) retry();
-    else field = static_cast<Field>((static_cast<int>(field) + 1) % 5);
+    else field = static_cast<Field>((static_cast<int>(field) + 1) % 6);
     dirty = true;
   }
   previousPressed = button.pressed();
