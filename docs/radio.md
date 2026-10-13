@@ -21,7 +21,7 @@ AIR 航空通信频率参考 [FAA AC 90-50D](https://www.faa.gov/regulations_pol
 全部频段和模式同时列出，全部使用无填充轮廓；当前值为青色，不支持的项置灰并跳过。黄色直角边框或图标表示当前旋钮控制的项目；开机默认聚焦频段。亮度在音量之后加入焦点循环，选中时太阳图标与百分比变黄，旋转调节背光。
 
 - 选择频率焦点后，旋转编码器连续调频；越过当前频段上限进入下一可用频段下限，越过下限进入上一可用频段上限；顺序为 LW ↔ MW ↔ SW ↔ VHF，整个范围在 LW 下限 153 kHz 与 VHF 上限 108 MHz 停止，不首尾相连，并跳过 AIR。跨段后恢复目标频段的模式与步进，累积多步输入按目标频段的步进继续。
-- 短按依次选择：频段 → 频率 → 模式 → 步进 → 音量 → 亮度 → 频段。
+- 短按依次选择：频段 → 频率 → 模式 → 步进 → 音量 → 亮度 → BW → AGC → SM → 频段。
 - 选择频段、模式、步进或音量后旋转修改。切换频段保留该频段本次运行的频率、模式、步进；暂不写入 Flash，重启恢复默认值。
 - 频率焦点长按 650 ms 切换手动/SEEK，SEEK 中频率变为橙色，旋转方向决定向前/向后搜台；音量焦点长按切换静音并保留音量。长按松开不会再触发短按。
 - 搜台中短按取消搜索，以芯片回读的当前位置作为手动频率，焦点继续停在频率，不进入下一个焦点。
@@ -91,11 +91,11 @@ USB 单字符诊断（不依赖菜单焦点）：`0/1/2/3` 选择 LW/MW/SW/FM；
 
 每 100 ms 回读搜索进度，达到电台或频段边缘停止；30 s 超时则取消并保留当前位置，不作为致命错误。搜索中短按立即取消并回到手动调谐；同方向连续旋转不排队跳台，反向旋转先取消再反向搜索。芯片搜索期间界面和按键继续更新。
 
-USB 调试命令 `e` / `h` 分别调用与短按/长按相同的动作处理，状态增加 `focus`（0–5 对应六个焦点）、`seek`、`searching`、`result` 字段。`result` 为 0 未搜索、1 搜索中、2 找到台、3 到边缘、4 用户取消、5 超时。
+USB 调试命令 `e` / `h` 分别调用与短按/长按相同的动作处理，状态增加 `focus`（0–8 对应九个焦点）、`seek`、`searching`、`result` 字段。`result` 为 0 未搜索、1 搜索中、2 找到台、3 到边缘、4 用户取消、5 超时。
 
 右侧亮度、音量、电量图标及百分比使用紧凑排列。只有音量焦点的长按执行静音；频率焦点长按切换 SEEK，其余焦点长按不执行额外动作。
 
-信号区使用等高 RSSI 分段条，并在右侧显示芯片 RSSI（dBμV）与 SNR（dB）。带宽显示 FM `AUTO`、AM `3.0k`、SSB `2.2k`；自动滤波不伪装成固定带宽。VALID 来自芯片频道有效性标志，AGC/ATT 后的数值是增益索引而非 dB；SM 表示芯片 Soft Mute 当前是否介入；P 表示 FM 导频检测；AFC! 表示 AFC 到达调节边缘，AFC OK 表示没有该异常。
+信号区使用等高 RSSI 分段条，并在右侧显示芯片 RSSI（dBμV）与 SNR（dB）。BW 默认 FM `AUTO`、AM `3.0k`、SSB `2.2k`，可通过编码器修改；自动滤波不显示固定带宽。VALID 来自芯片频道有效性标志，AGC/ATT 后的数值是增益索引而非 dB；SM 选框显示配置的最大软静音衰减，底部 `SM*` 表示芯片 Soft Mute 当前介入；P 表示 FM 导频检测；AFC! 表示 AFC 到达调节边缘，AFC OK 表示没有该异常。
 
 MONO/立体声由音量图标表示：单道声波为 mono，双道声波为存在立体声混合，静音为叉号。状态来源于 FM RSQ 的 stereo blend 回读，AM/SSB 为 mono；尚未取得稳定质量状态时不画声波。图标反映接收芯片的解码状态，不改变内置单声道功放的硬件结构。静噪 SQL 尚未实现，Soft Mute 也不等同于 SQL 门限。
 
@@ -105,3 +105,45 @@ SEEK 版本验证：构建/刷入哈希校验、原生模型测试和 `test/seek
 # 重启设备后运行（会改变频率及状态，最后回到 VHF/FM 100 MHz）
 ~/.platformio/penv/bin/python test/seek_smoke.py /dev/cu.usbmodem21101
 ```
+
+
+## 可调接收参数与主显示区
+
+模式与顶部频段使用相同的 26×17 直角、无填充选框；BW、AGC、SM 选框与模式在同一行，旋钮当前焦点显示黄色。原有六项焦点之后增加 BW、AGC、SM。RSSI 等高信号条、数值、SNR 与 VALID 在同一行，下一行显示步进、AFC、实际 RF 增益索引及软静音介入状态。
+
+| 参数 | FM | AM | LSB / USB |
+| --- | --- | --- | --- |
+| BW | AUTO、40、60、84、110 kHz | 1、1.8、2、2.5、3、4、6 kHz | 0.5、1、1.2、2.2、3、4 kHz |
+| AGC | AUTO 或 ATT 0–26 | AUTO 或 ATT 0–37 | AUTO 或 ATT 0–37 |
+| SM | OFF（0）至 31 dB | OFF（0）至 31 dB | OFF（0）至 31 dB |
+
+带宽旋转按数值顺序循环；AGC 与 SM 在端点停止。ATT 数值是芯片增益索引，不是 dB；值越大衰减越大。SM 设置最大软静音衰减，不是 SQL 门限；本界面统一提供 0–31 dB 的范围。各解调模式分别保留参数到 RAM，切换模式恢复，重启回到默认值（FM 的 SM 为 16 dB，AM/SSB 为 OFF）。修改只写接收参数，不重载 SSB 补丁或重设频率。
+
+FM 使用 FM_CHANNEL_FILTER / FM_AGC_OVERRIDE / FM_SOFT_MUTE_MAX_ATTENUATION；AM 使用 AM_CHANNEL_FILTER / AM_AGC_OVERRIDE / AM_SOFT_MUTE_MAX_ATTENUATION；SSB 使用补丁的 SSB_MODE / AM_AGC_OVERRIDE / SSB_SOFT_MUTE_MAX_ATTENUATION，保持 AVC 开启与 AFC 禁用，窄于等于 2 kHz 时 SBCUTFLT=0。来源：[Skyworks AN332](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf)、[PU2CLR SSB 配置](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html)。
+
+红色指针下方始终显示当前模型频率及单位，SSB 保留 1 Hz 精度；仅避让附近的文字标签，不改变刻度间隔、连续基线或频段边界。
+
+大字区域靠左显示频率；收到确认的 RDS PS 时显示电台名，收到 RT 时显示广播文本，两者都有则 PS 停留 5 秒后显示 RT，并留足一次完整滚动的时间。长文本按 35 ms/像素水平滚动，起止各停留 1.2 秒，裁剪在主显示区内，文字更新后从头开始。没有有效 RDS，或正在调谐/搜索时显示频率。
+
+使用 LovyanGFX 自带 `efontCN_24` 中文字库渲染名称/文本，频率保持原来的大号数字。RDS 传输不是 UTF-8：当前解码器支持可打印 ASCII，其他字符显示 `?`；引入中文字库不等于已支持非标准中文 RDS 编码，后续需针对实际广播字符集补充转换。
+
+RDS 在 FM 模式开启，每 100 ms 使用 STATUSONLY 查看 FIFO 后最多消费 4 组，避免空 FIFO 的旧块被当作新数据。PS 解码 0A/0B、RT 解码 2A/2B；同一 PI 下两次完整且相同的消息才发布。PI 更换、调频、开始/结束 SEEK、同步丢失或 FIFO 溢出时清除旧数据；RT A/B 标志或版本改变时单独清除旧 RT。接受 A/B/D（以及 2A 的 C）至多 1–2 个已纠正位错误；硬件 RDS_CONFIG=0x5501，四块均使用此门限。FIFO 和块定义参见 AN332 的 FM_RDS_STATUS / FM_RDS_CONFIG。
+
+USB 调试补充：`>` / `<` 调用当前焦点的旋转操作；`bwsel`、`gainset`、`smset` 显示配置，`bw` 为驱动成功应用的带宽。`ps=[…]` 输出已确认的电台名。
+
+新增测试：
+
+```sh
+clang++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc \
+  test/native/rds_test.cpp -o /tmp/ats-mini-rds-test
+/tmp/ats-mini-rds-test
+clang++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -Itest/native/stubs -Isrc \
+  test/native/driver_test.cpp src/drivers/si473x/si473x.cpp -o /tmp/ats-mini-driver-test
+/tmp/ats-mini-driver-test
+# 设备重启后运行，检查三种接收模式的参数设置及恢复
+~/.platformio/penv/bin/python test/reception_smoke.py /dev/cu.usbmodem21101
+```
+
+原生测试覆盖 PS/RT 完整消息确认、乱序 PS、纠错门限、RT A/B/版本切换、PI 切换，以及真实驱动对模拟总线的命令字节、FIFO 最后一组/空 FIFO/同步丢失和调频/SEEK 清理。模拟总线不能证明实际 RF 收到 RDS；需在发送 RDS 的 FM 台上进一步验证。
+
+2026-10-13 此版本验证：构建与刷入哈希校验通过；模型、RDS PS/RT、模拟总线驱动测试均通过。实机 `reception_smoke.py` 验证 FM/AM/SSB 带宽选择、AGC 自动/手动端点、SM 调节及模式间参数恢复，`seek_smoke.py` 验证新增焦点后原有 SEEK、取消、限频与长按静音交互。当前 RF 环境尚未取得有效 PS/RT，因此未宣称实机电台文本或中文广播解码已经验证。设备最终恢复 FM 100 MHz、音量 18、手动调谐。

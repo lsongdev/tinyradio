@@ -1,6 +1,8 @@
 #pragma once
 #include <Wire.h>
 #include "tuning.h"
+#include "rds.h"
+#include "settings.h"
 namespace drivers {
 enum class Error : uint8_t { None, NoDevice, Bus, Timeout, Command, Frequency, Patch };
 enum class SeekResult : uint8_t { None, Searching, Found, Limit, Cancelled, Timeout };
@@ -23,6 +25,10 @@ public:
   SeekResult seekResult() const { return seekResult_; }
   bool poll(); // Nonblocking STC polling; confirmed frequency updated on completion.
   bool readSignal();
+  bool readRds();
+  const char* rdsPs() const { return rds_.text(); }
+  const char* rdsText() const { return rds_.radioText(); }
+  bool setReception(const ReceptionSettings& settings);
   bool setVolume(uint8_t volume);
   bool setMuted(bool muted);
   Error error() const { return error_; }
@@ -33,7 +39,7 @@ public:
   bool configured() const { return configured_; }
   uint32_t frequencyHz() const { return confirmedHz_; }
   const Signal& signal() const { return signal_; }
-  uint32_t bandwidthHz() const { return mode_ == Mode::FM ? 0 : isSsb(mode_) ? 2200 : 3000; }
+  uint32_t bandwidthHz() const { return bandwidthHz_; }
   const Revision& revision() const { return revision_; }
 private:
   bool read(uint8_t* response, uint8_t size);
@@ -46,6 +52,7 @@ private:
   bool pollSeek();
   bool seekStatus(bool cancel, bool acknowledge);
   bool fail(Error error);
+  bool clearRds();
   TwoWire& bus_;
   uint8_t address_ = 0;
   Error error_ = Error::None;
@@ -58,5 +65,7 @@ private:
   uint32_t requestedHz_ = 0, confirmedHz_ = 0, tuneStarted_ = 0, lastPoll_ = 0;
   Signal signal_{};
   Revision revision_{};
+  RdsDecoder rds_;
+  uint32_t bandwidthHz_ = 0;
 };
 }

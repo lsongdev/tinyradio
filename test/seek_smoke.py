@@ -11,12 +11,17 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
         port.reset_input_buffer()
         port.write(command.encode())
         deadline = time.monotonic() + 12
+        pending_line = b''
         next_query = time.monotonic()
         while time.monotonic() < deadline:
             if time.monotonic() >= next_query:
                 port.write(b'?')
                 next_query = time.monotonic() + 0.05
-            line = port.readline().decode(errors='replace').strip()
+            pending_line += port.readline()
+            if not pending_line.endswith(b'\n'):
+                continue
+            line = pending_line.decode(errors='replace').strip()
+            pending_line = b''
             if not line.startswith('RADIO '):
                 if line:
                     print(line, flush=True)
@@ -52,7 +57,7 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
     action('eee', focus=4)
     action('h', focus=4, mute=1, seek=0)
     action('h', focus=4, mute=0, seek=0)
-    action('eeh', focus=0, mute=0, seek=0)  # only volume long-press mutes
+    action('eeeeeh', focus=0, mute=0, seek=0)  # only volume long-press mutes
     action('e3f', focus=1, band='VHF', mode='FM', confirmed=108000000, bw=0)
     action('-' * 80, focus=1, confirmed=100000000, seek=0, mute=0)
     print('Seek smoke passed; VHF/FM 100MHz, frequency focus, manual mode', flush=True)

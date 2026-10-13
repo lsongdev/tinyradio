@@ -19,20 +19,29 @@ hal::Audio audio;
 hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
-enum class Field { Band, Frequency, Mode, Step, Volume, Brightness };
+enum class Field { Band, Frequency, Mode, Step, Volume, Brightness, Bandwidth, Gain, SoftMute, Count };
 Field field = Field::Band;
 int volume = 18, appliedVolume = -1;
 int brightness = 128;
+drivers::ReceptionSettings reception[] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
+bool receptionDirty = true;
+auto settings() -> drivers::ReceptionSettings& { return reception[static_cast<unsigned>(model.mode())]; }
+void frequencyText(char* text, size_t size, bool unit) {
+  const uint32_t hz = model.frequencyHz();
+  if (model.band().fm) snprintf(text, size, "%lu.%02lu%s", static_cast<unsigned long>(hz / 1000000), static_cast<unsigned long>(hz % 1000000 / 10000), unit ? "MHz" : "");
+  else if (drivers::isSsb(model.mode())) snprintf(text, size, "%lu.%03lu%s", static_cast<unsigned long>(hz / 1000), static_cast<unsigned long>(hz % 1000), unit ? "kHz" : "");
+  else snprintf(text, size, "%lu%s", static_cast<unsigned long>(hz / 1000), unit ? "kHz" : "");
+}
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
 bool reconfigure = true, held = false, previousPressed = false, audioReady = false, seekMode = false;
 int pendingSeek = 0, seekDirection = 0;
-uint32_t pressedAt = 0, editedAt = 0, lastSignal = 0, lastBattery = 0, lastDraw = 0, lastTune = 0;
+uint32_t pressedAt = 0, editedAt = 0, lastSignal = 0, lastBattery = 0, lastDraw = 0, lastTune = 0, lastRds = 0;
 void report() {
   const auto& s = chip.signal();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d mute=%d tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u error=%s\n",
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d mute=%d tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
     static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, muted,
-    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), chip.errorText());
+    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawCircle(x + 6, 10, 3, color);
@@ -75,6 +84,8 @@ void drawRuler(lgfx::LGFXBase& g) {
   }
   for (int i = 0; i < 27; ++i) ticks[i].x = 160 + (i - center) * spacing;
 
+  char current[24]; frequencyText(current, sizeof current, true);
+  const int currentWidth = g.textWidth(current);
   g.drawFastHLine(0, 140, 320, TFT_DARKGREY);
   g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
   for (int i = 0; i < 27; ++i) {
@@ -94,11 +105,15 @@ void drawRuler(lgfx::LGFXBase& g) {
       // A two-pixel label offset keeps SW/VHF names from touching, while
       // preserving the exact same tick spacing and unbroken scale line.
       const int labelX = tick.x + (edge ? (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2) : 0);
-      g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
+      const int labelWidth = g.textWidth(label);
+      if (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6) {
+        g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
+      }
     }
   }
   g.fillTriangle(155, 133, 165, 133, 160, 139, TFT_RED);
   g.drawFastVLine(160, 140, 14, TFT_RED);
+  g.setTextColor(TFT_RED, TFT_BLACK); g.drawString(current, 160, 159);
   g.setTextDatum(lgfx::textdatum_t::top_left);
 }
 void draw() {
@@ -127,53 +142,86 @@ void draw() {
   if (!supply.plausible || supply.externalPowerLikely) g.print("--%"); else g.printf("%u%%", supply.estimatedPercent);
 
   const uint32_t hz = model.frequencyHz(); char frequency[20];
-  if (model.band().fm) snprintf(frequency, sizeof frequency, "%lu.%02lu", static_cast<unsigned long>(hz / 1000000), static_cast<unsigned long>(hz % 1000000 / 10000));
-  else if (drivers::isSsb(model.mode())) snprintf(frequency, sizeof frequency, "%lu.%03lu", static_cast<unsigned long>(hz / 1000), static_cast<unsigned long>(hz % 1000));
-  else snprintf(frequency, sizeof frequency, "%lu", static_cast<unsigned long>(hz / 1000));
+  frequencyText(frequency, sizeof frequency, false);
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
   g.setTextColor(failed ? TFT_RED : seekMode ? TFT_ORANGE : field == Field::Frequency ? TFT_CYAN : TFT_WHITE, TFT_BLACK);
-  g.setTextSize(4); g.setTextDatum(lgfx::textdatum_t::middle_center); g.drawString(frequency, 151, 49);
+  const bool showPs = !failed && !pending && !seekMode && chip.rdsPs()[0];
+  g.setFont(&fonts::efontCN_24); g.setTextSize(1);
+  const int rtWidth = g.textWidth(chip.rdsText());
+  const uint32_t rtDuration = max(8000u, uint32_t(max(0, rtWidth - 304)) * 35u + 2400u);
+  const bool showRt = !failed && !pending && !seekMode && chip.rdsText()[0] &&
+                      (!showPs || millis() % (5000u + rtDuration) >= 5000u);
+  const char* mainText = showRt ? chip.rdsText() : showPs ? chip.rdsPs() : frequency;
+  if (showPs || showRt) g.setFont(&fonts::efontCN_24); else g.setFont(&fonts::Font0);
+  g.setTextSize(showPs || showRt ? 1 : 4);
+  g.setTextDatum(lgfx::textdatum_t::middle_left);
+  const int textWidth = g.textWidth(mainText), regionWidth = 304;
+  static char previousText[65]{}; static uint32_t scrollStarted = 0;
+  if (strcmp(previousText, mainText)) {
+    snprintf(previousText, sizeof previousText, "%s", mainText); scrollStarted = millis();
+  }
+  int offset = 0;
+  if (textWidth > regionWidth) {
+    const uint32_t travel = (textWidth - regionWidth) * 35u;
+    const uint32_t phase = (millis() - scrollStarted) % (travel + 2400);
+    offset = phase < 1200 ? 0 : phase < travel + 1200 ? (phase - 1200) / 35 : textWidth - regionWidth;
+  }
+  g.setClipRect(8, 23, regionWidth, 38); g.drawString(mainText, 8 - offset, 43); g.clearClipRect();
+  g.setFont(&fonts::Font0); g.setTextSize(1);
+  g.setTextDatum(lgfx::textdatum_t::middle_right); g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  g.drawString(showRt ? "RDS RT" : showPs ? "RDS PS" : model.band().fm ? "MHz" : "kHz", 312, 61);
   if (seekMode && (chip.seeking() || pendingSeek)) {
     const int direction = pendingSeek ? pendingSeek : seekDirection;
     if (direction > 0) g.fillTriangle(303, 39, 303, 53, 312, 46, TFT_ORANGE);
     else g.fillTriangle(17, 39, 17, 53, 8, 46, TFT_ORANGE);
   }
-  g.setTextSize(1); g.setTextColor(pending ? TFT_DARKGREY : TFT_LIGHTGREY, TFT_BLACK); g.drawString(model.band().fm ? "MHz" : "kHz", 286, 57);
+  g.setTextDatum(lgfx::textdatum_t::middle_center);
   for (int i = 0; i < 4; ++i) {
-    const auto mode = static_cast<drivers::Mode>(i); const int x = 8 + i * 78;
+    const auto mode = static_cast<drivers::Mode>(i); const int x = 3 + i * 28;
     const bool active = model.mode() == mode;
     const uint16_t ink = !radio::allowed(model.band(), mode) ? TFT_DARKGREY : active ? (field == Field::Mode ? TFT_YELLOW : TFT_CYAN) : TFT_LIGHTGREY;
-    g.drawRect(x, 79, 70, 22, ink);
-    g.setTextColor(ink, TFT_BLACK); g.drawString(drivers::modeName(mode), x + 35, 90);
+    g.drawRect(x, 70, 26, 17, ink);
+    g.setTextColor(ink, TFT_BLACK); g.drawString(drivers::modeName(mode), x + 13, 78);
   }
+  const auto option = [&](Field focus, int x, int width, const char* label) {
+    const uint16_t ink = field == focus ? TFT_YELLOW : TFT_CYAN;
+    g.drawRect(x, 70, width, 17, ink); g.setTextColor(ink, TFT_BLACK);
+    g.drawString(label, x + width / 2, 78);
+  };
+  char label[24]; int count; const auto* options = drivers::bandwidths(model.mode(), count);
+  const uint32_t bw = options[settings().bandwidth].hz;
+  if (!bw) snprintf(label, sizeof label, "BW AUTO");
+  else if (bw >= 10000) snprintf(label, sizeof label, "BW %luk", static_cast<unsigned long>(bw / 1000));
+  else snprintf(label, sizeof label, "BW %lu.%luk", static_cast<unsigned long>(bw / 1000), static_cast<unsigned long>(bw % 1000 / 100));
+  option(Field::Bandwidth, 117, 63, label);
+  if (settings().gain < 0) snprintf(label, sizeof label, "AGC AUTO"); else snprintf(label, sizeof label, "ATT %d", settings().gain);
+  option(Field::Gain, 184, 70, label);
+  if (!settings().softMuteDb) snprintf(label, sizeof label, "SM OFF"); else snprintf(label, sizeof label, "SM %udB", settings().softMuteDb);
+  option(Field::SoftMute, 258, 59, label);
   g.setTextDatum(lgfx::textdatum_t::top_left);
-  // Equal-height RSSI segments plus the actual chip metrics.
   const auto& signal = chip.signal();
   const bool stable = !failed && !pending && signal.qualityKnown;
   const int bars = stable ? constrain((signal.rssi + 5) / 6, 0, 10) : 0;
   for (int i = 0; i < 10; ++i)
-    g.fillRect(8 + i * 4, 105, 3, 8, i < bars ? TFT_GREEN : TFT_DARKGREY);
-  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(54, 105);
+    g.fillRect(8 + i * 4, 95, 3, 8, i < bars ? TFT_GREEN : TFT_DARKGREY);
+  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(54, 95);
   if (stable) g.printf("%u dBuV", signal.rssi); else g.print("-- dBuV");
-  g.setCursor(106, 105); if (stable) g.printf("SN %udB", signal.snr); else g.print("SN --");
-  g.setCursor(158, 105);
-  const uint32_t bw = chip.bandwidthHz();
-  if (!bw) g.print("BW AUTO"); else g.printf("BW %lu.%luk", static_cast<unsigned long>(bw / 1000), static_cast<unsigned long>(bw % 1000 / 100));
-  g.setTextColor(field == Field::Step ? TFT_YELLOW : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(246, 105);
-  if (model.stepHz() >= 1000) g.printf("%lukHz", static_cast<unsigned long>(model.stepHz() / 1000));
-  else g.printf("%luHz", static_cast<unsigned long>(model.stepHz()));
-  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(8, 117);
-  if (failed) { g.setTextColor(TFT_RED, TFT_BLACK); g.print(chip.errorText()); }
-  else if (pending) g.print(chip.seeking() ? "SEEK" : "TUNING");
-  else if (stable) {
-    g.setTextColor(signal.valid ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK); g.print(signal.valid ? "VALID" : "INVALID");
-    g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    g.setCursor(64, 117); g.printf("%s:%u", signal.agcEnabled ? "AGC" : "ATT", signal.gainIndex);
-    g.setCursor(126, 117); g.printf("SM %u", signal.softMuted);
-    if (model.band().fm) { g.setCursor(166, 117); g.printf("P %u", signal.pilot); }
-    g.setCursor(210, 117); g.setTextColor(signal.afcRail ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK); g.print(signal.afcRail ? "AFC!" : "AFC OK");
-    if (muted) { g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(262, 117); g.print("MUTE"); }
-  }
+  g.setCursor(114, 95); if (stable) g.printf("SN %udB", signal.snr); else g.print("SN --");
+  g.setCursor(181, 95);
+  g.setTextColor(stable && signal.valid ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK);
+  if (stable) g.print(signal.valid ? "VALID" : "INVALID"); else g.print("--");
+  g.setCursor(245, 95); g.setTextColor(failed ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK);
+  if (failed) g.print("ERROR"); else if (pending) g.print(chip.seeking() ? "SEEK" : "TUNING");
+  else if (model.band().fm) g.printf("P %u", signal.pilot);
+
+  g.setTextColor(field == Field::Step ? TFT_YELLOW : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(8, 115);
+  if (model.stepHz() >= 1000) g.printf("STEP %lukHz", static_cast<unsigned long>(model.stepHz() / 1000));
+  else g.printf("STEP %luHz", static_cast<unsigned long>(model.stepHz()));
+  g.setTextColor(stable && signal.afcRail ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(110, 115);
+  g.print(!stable ? "AFC --" : signal.afcRail ? "AFC!" : "AFC OK");
+  g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(225, 115);
+  if (failed) g.print("ERROR"); else if (muted) g.print("MUTE");
+  else if (stable) { g.setTextColor(signal.softMuted ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK); g.printf("RF %u%s", signal.gainIndex, signal.softMuted ? " SM*" : ""); }
   drawRuler(g);
   if (buffered) frame.pushSprite(0, 0);
 }
@@ -227,7 +275,7 @@ void longPress() {
 void shortPress() {
   if (failed) retry();
   else if (seekMode || chip.seeking() || pendingSeek) stopSeek(true);
-  else { field = static_cast<Field>((static_cast<int>(field) + 1) % 6); dirty = true; }
+  else { field = static_cast<Field>((static_cast<int>(field) + 1) % static_cast<int>(Field::Count)); dirty = true; }
 }
 void turn(int delta) {
   switch (field) {
@@ -236,6 +284,14 @@ void turn(int delta) {
     case Field::Mode: model.turnMode(delta); changedConfiguration(); break;
     case Field::Step: model.turnStep(delta); break;
     case Field::Volume: volume = constrain(volume + delta, 0, 63); break;
+    case Field::Bandwidth: {
+      int count; drivers::bandwidths(model.mode(), count);
+      const int next = (int(settings().bandwidth) + delta % count + count) % count;
+      settings().bandwidth = next; receptionDirty = true; break;
+    }
+    case Field::Gain: settings().gain = constrain(int(settings().gain) + delta, -1, drivers::maxGainIndex(model.mode())); receptionDirty = true; break;
+    case Field::SoftMute: settings().softMuteDb = constrain(int(settings().softMuteDb) + delta, 0, 31); receptionDirty = true; break;
+    case Field::Count: break;
     case Field::Brightness: brightness = constrain(brightness + delta * 8, 8, 255); if (lcd) display.setBrightness(brightness); break;
   }
   dirty = true;
@@ -256,6 +312,8 @@ void serialInput() {
     else if (c == 'm') { muted = !muted; if (audioReady) audio.setMuted(muted); dirty = true; }
     else if (c == 'e') shortPress();
     else if (c == 'h') longPress();
+    else if (c == '>') turn(1);
+    else if (c == '<') turn(-1);
     else if (c == '?') report();
     else if (c == 'r') retry();
   }
@@ -295,7 +353,7 @@ void updateReceiver() {
     audio.setMuted(true); audioReady = false;
     if (!chip.configure(model.mode(), volume)) fail();
     else {
-      reconfigure = false; appliedVolume = volume;
+      reconfigure = false; appliedVolume = volume; receptionDirty = true;
       Serial.printf("Configured mode=%s part=%02x fw=%02x.%02x component=%c.%c patch=0x%04x\n", drivers::modeName(model.mode()), chip.revision().part,
         chip.revision().major, chip.revision().minor, chip.revision().componentMajor, chip.revision().componentMinor, chip.revision().patch);
     }
@@ -309,6 +367,10 @@ void updateReceiver() {
       if (!chip.seeking()) { seekDirection = 0; report(); }
     }
     if (wasTuning && !chip.tuning()) { dirty = true; report(); }
+    if (!failed && receptionDirty && !chip.tuning() && !chip.seeking()) {
+      if (!chip.setReception(settings())) fail(); else receptionDirty = false;
+      dirty = true;
+    }
     if (!failed && pendingSeek && !chip.tuning() && !chip.seeking() && chip.frequencyHz() == model.frequencyHz()) {
       seekDirection = pendingSeek; pendingSeek = 0;
       audio.setMuted(true); audioReady = false;
@@ -326,11 +388,15 @@ void updateReceiver() {
     if (!failed && appliedVolume != volume) {
       if (!chip.setVolume(volume)) fail(); else appliedVolume = volume;
     }
+    if (!failed && !chip.tuning() && !chip.seeking() && now - lastRds >= 100) {
+      lastRds = now; if (!chip.readRds()) fail(); dirty = true;
+    }
     if (!failed && !chip.tuning() && !chip.seeking() && now - lastSignal >= 500) {
       lastSignal = now; if (!chip.readSignal()) fail(); dirty = true;
     }
   }
   if (now - lastBattery >= 1000) { lastBattery = now; supply = battery.read(); dirty = true; }
+  if (chip.rdsText()[0] && now - lastDraw >= 50) dirty = true;
   if (dirty && now - lastDraw >= 50) { dirty = false; lastDraw = now; if (lcd) draw(); }
   delay(1);
 }

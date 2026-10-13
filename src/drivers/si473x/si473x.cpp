@@ -3,7 +3,7 @@
 #include "patches/ssb.h"
 namespace drivers {
 bool Si473x::fail(Error error) {
-  error_ = error; configured_ = false; tuning_ = seeking_ = false; carrierKnown_ = false;
+  rds_.clear(); error_ = error; configured_ = false; tuning_ = seeking_ = false; carrierKnown_ = false;
   return false;
 }
 const char* Si473x::errorText() const {
@@ -12,7 +12,7 @@ const char* Si473x::errorText() const {
   return names[static_cast<uint8_t>(error_)];
 }
 bool Si473x::begin() {
-  error_ = Error::None; powered_ = configured_ = tuning_ = carrierKnown_ = false;
+  rds_.clear(); error_ = Error::None; powered_ = configured_ = tuning_ = carrierKnown_ = false;
   confirmedHz_ = 0; revision_ = {}; signal_ = {}; seeking_ = false; seekResult_ = SeekResult::None;
   for (uint8_t address : {uint8_t(0x11), uint8_t(0x63)}) {
     bus_.beginTransmission(address);
@@ -102,6 +102,7 @@ bool Si473x::loadSsb() {
 }
 bool Si473x::configure(Mode mode, uint8_t volume) {
   if (seeking_ && !cancelSeek()) return false;
+  rds_.clear();
   const bool sameEngine = configured_ && (mode == mode_ || (isSsb(mode) && isSsb(mode_)));
   error_ = Error::None;
   if (!sameEngine) {
@@ -116,11 +117,11 @@ bool Si473x::configure(Mode mode, uint8_t volume) {
     } else {
       if (!powerUp(mode == Mode::FM ? 0x10 : 0x11) || !getRevision()) return false;
       if (mode == Mode::FM) {
-        if (!property(0x1100, 1) || !property(0x1102, 0)) return false; // 50us FM de-emphasis
+        if (!property(0x1100, 1) || !property(0x1102, 0) || !property(0x1502, 0x5501)) return false; // 50us FM de-emphasis
       } else if (!property(0x3102, 2) || !property(0x3302, 0)) return false; // AM 3kHz, soft mute off
     }
   }
-  mode_ = mode; carrierKnown_ = false; confirmedHz_ = 0;
+  mode_ = mode; bandwidthHz_ = mode == Mode::FM ? 0 : isSsb(mode) ? 2200 : 3000; carrierKnown_ = false; confirmedHz_ = 0;
   if (!setVolume(volume) || !setMuted(false)) return false;
   configured_ = true;
   return true;
@@ -129,6 +130,7 @@ bool Si473x::setVolume(uint8_t volume) { return property(0x4000, volume > 63 ? 6
 bool Si473x::setMuted(bool muted) { return property(0x4001, muted ? 3 : 0); }
 bool Si473x::tune(uint32_t hz) {
   if (!configured_ || seeking_) return false;
+  if (!clearRds()) return false;
   TuneWord word;
   if (!encodeFrequency(mode_, hz, word)) return fail(Error::Frequency);
   if (isSsb(mode_) && carrierKnown_) {
@@ -154,6 +156,7 @@ bool Si473x::tune(uint32_t hz) {
 }
 bool Si473x::seek(bool up, uint32_t lowerHz, uint32_t upperHz, uint32_t spacingHz) {
   if (!configured_ || tuning_ || seeking_ || isSsb(mode_)) return false;
+  if (!clearRds()) return false;
   TuneWord low, high;
   if (lowerHz > upperHz || !encodeFrequency(mode_, lowerHz, low) || !encodeFrequency(mode_, upperHz, high))
     return fail(Error::Frequency);
@@ -185,6 +188,7 @@ bool Si473x::seekStatus(bool cancel, bool acknowledge) {
   signal_ = {response[4], response[5], bool(response[1] & 1), false, 0, 0, false, false, false, false, false};
   if (cancel || (response[0] & 1)) {
     seeking_ = false;
+    if (!clearRds()) return false;
     seekResult_ = cancel ? SeekResult::Cancelled : (response[1] & 0x80) ? SeekResult::Limit : SeekResult::Found;
   }
   return true;
@@ -219,8 +223,46 @@ bool Si473x::poll() {
   if (!command(cmd, sizeof cmd, response, sizeof response)) return false;
   const uint16_t actual = (response[2] << 8) | response[3];
   if (actual != carrier_) return fail(Error::Frequency);
+  if (!clearRds()) return false;
   confirmedHz_ = requestedHz_; tuning_ = false; carrierKnown_ = true;
   signal_ = {response[4], response[5], bool(response[1] & 1), false, 0, 0, false, false, false, false, false};
+  return true;
+}
+bool Si473x::setReception(const ReceptionSettings& settings) {
+  int count; const auto* options = bandwidths(mode_, count);
+  if (!configured_ || tuning_ || seeking_ || settings.bandwidth >= count || settings.gain < -1 ||
+      settings.gain > maxGainIndex(mode_) || settings.softMuteDb > 31) return false;
+  const auto& bw = options[settings.bandwidth];
+  const uint16_t bwValue = isSsb(mode_) ? uint16_t(0x9000 | (bw.hz > 2000 ? 0x10 : 0) | bw.code) : bw.code;
+  if (!property(mode_ == Mode::FM ? 0x1102 : isSsb(mode_) ? 0x0101 : 0x3102, bwValue) ||
+      !property(mode_ == Mode::FM ? 0x1302 : 0x3302, settings.softMuteDb)) return false;
+  const uint8_t agc[] = {uint8_t(mode_ == Mode::FM ? 0x28 : 0x48), uint8_t(settings.gain >= 0),
+                         uint8_t(settings.gain < 0 ? 0 : settings.gain)};
+  if (!command(agc, sizeof agc)) return false;
+  bandwidthHz_ = bw.hz; signal_.qualityKnown = false;
+  return true;
+}
+bool Si473x::clearRds() {
+  rds_.clear();
+  if (mode_ != Mode::FM || !configured_) return true;
+  const uint8_t cmd[] = {0x24, 3}; // INTACK + MTFIFO; discard previous station data.
+  return command(cmd, sizeof cmd);
+}
+bool Si473x::readRds() {
+  if (!configured_ || mode_ != Mode::FM || tuning_ || seeking_) return true;
+  uint8_t response[13]; const uint8_t peek[] = {0x24, 5}; // STATUSONLY + INTACK.
+  if (!command(peek, sizeof peek, response, sizeof response)) return false;
+  if (!(response[2] & 1) || (response[1] & 2) || (response[2] & 4)) {
+    return clearRds(); // Sync loss or FIFO overrun: don't combine incomplete names.
+  }
+  const uint8_t count = response[3] < 4 ? response[3] : 4;
+  const uint8_t pop[] = {0x24, 1};
+  for (uint8_t i = 0; i < count; ++i) {
+    if (!command(pop, sizeof pop, response, sizeof response)) return false;
+    if (!(response[2] & 1) || (response[1] & 2)) return clearRds();
+    rds_.accept(uint16_t(response[4] << 8 | response[5]), uint16_t(response[6] << 8 | response[7]),
+               uint16_t(response[10] << 8 | response[11]), response[12], uint16_t(response[8] << 8 | response[9]));
+  }
   return true;
 }
 bool Si473x::readSignal() {
