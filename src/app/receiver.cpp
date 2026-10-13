@@ -50,7 +50,7 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color) {
 void drawRuler(lgfx::LGFXBase& g) {
   struct Tick { uint32_t hz, step; size_t band; int x; bool valid; };
   Tick ticks[27];
-  constexpr int center = 13, spacing = 12, bandGap = 44;
+  constexpr int center = 13, spacing = 12;
   for (int i = 0; i < 27; ++i) {
     const int offset = i - center;
     radio::Model preview = model;
@@ -63,11 +63,7 @@ void drawRuler(lgfx::LGFXBase& g) {
     }
     ticks[i] = {preview.frequencyHz(), preview.stepHz(), preview.bandIndex(), 0, valid};
   }
-  ticks[center].x = 160;
-  for (int i = center + 1; i < 27; ++i)
-    ticks[i].x = ticks[i - 1].x + spacing + (ticks[i].band != ticks[i - 1].band ? bandGap : 0);
-  for (int i = center - 1; i >= 0; --i)
-    ticks[i].x = ticks[i + 1].x - spacing - (ticks[i].band != ticks[i + 1].band ? bandGap : 0);
+  for (int i = 0; i < 27; ++i) ticks[i].x = 160 + (i - center) * spacing;
 
   g.drawFastHLine(0, 130, 320, TFT_DARKGREY);
   g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
@@ -81,23 +77,15 @@ void drawRuler(lgfx::LGFXBase& g) {
     g.drawFastVLine(tick.x, 130, major ? 17 : 8, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
     if (major) {
       char label[20];
-      if (radio::bands[tick.band].fm) snprintf(label, sizeof label, "%lu.%02luM", static_cast<unsigned long>(tick.hz / 1000000), static_cast<unsigned long>(tick.hz % 1000000 / 10000));
+      if (edge) snprintf(label, sizeof label, "%s", radio::bands[tick.band].name);
+      else if (radio::bands[tick.band].fm) snprintf(label, sizeof label, "%lu.%02luM", static_cast<unsigned long>(tick.hz / 1000000), static_cast<unsigned long>(tick.hz % 1000000 / 10000));
       else if (tick.step < 1000) snprintf(label, sizeof label, "%lu.%02luk", static_cast<unsigned long>(tick.hz / 1000), static_cast<unsigned long>(tick.hz % 1000 / 10));
       else snprintf(label, sizeof label, "%luk", static_cast<unsigned long>(tick.hz / 1000));
-      g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, tick.x, 151);
+      // A two-pixel label offset keeps SW/VHF names from touching, while
+      // preserving the exact same tick spacing and unbroken scale line.
+      const int labelX = tick.x + (edge ? (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2) : 0);
+      g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 151);
     }
-  }
-  for (int i = 1; i < 27; ++i) {
-    const auto& left = ticks[i - 1]; const auto& right = ticks[i];
-    if (!left.valid || !right.valid || left.band == right.band) continue;
-    const int seam = (left.x + right.x) / 2;
-    if (seam < 0 || seam >= 320) continue;
-    // Leave a visible gap between disjoint RF ranges, with a name on each side.
-    g.fillRect(left.x + 4, 130, right.x - left.x - 8, 18, TFT_BLACK);
-    g.drawFastVLine(seam, 131, 13, TFT_DARKGREY);
-    g.setTextColor(TFT_CYAN, TFT_BLACK);
-    g.setTextDatum(lgfx::textdatum_t::top_right); g.drawString(radio::bands[left.band].name, seam - 4, 134);
-    g.setTextDatum(lgfx::textdatum_t::top_left); g.drawString(radio::bands[right.band].name, seam + 4, 134);
   }
   g.fillTriangle(155, 123, 165, 123, 160, 129, TFT_RED);
   g.drawFastVLine(160, 130, 18, TFT_RED);
