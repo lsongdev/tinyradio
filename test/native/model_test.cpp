@@ -12,16 +12,16 @@ int main() {
   radio::Model model;
   assert(!model.setBand(4) && !model.setBand(99));
   assert(!model.setMode(Mode::AM) && !model.setMode(Mode::USB));
-  // Every boundary, both directions; the first/last available bands cycle.
+  // Adjacent boundaries cross; global endpoints stop.
   for (int band = 0; band < 4; ++band) {
     model.setBand(band); model.setFrequency(model.band().maxHz);
     model.turnFrequency(1);
-    assert(model.bandIndex() == size_t((band + 1) % 4));
-    assert(model.frequencyHz() == model.band().minHz); valid(model);
+    assert(model.bandIndex() == size_t(band == 3 ? 3 : band + 1));
+    assert(model.frequencyHz() == (band == 3 ? model.band().maxHz : model.band().minHz)); valid(model);
     model.setBand(band); model.setFrequency(model.band().minHz);
     model.turnFrequency(-1);
-    assert(model.bandIndex() == size_t((band + 3) % 4));
-    assert(model.frequencyHz() == model.band().maxHz); valid(model);
+    assert(model.bandIndex() == size_t(band == 0 ? 0 : band - 1));
+    assert(model.frequencyHz() == (band == 0 ? model.band().minHz : model.band().maxHz)); valid(model);
   }
   model.setBand(2); model.setMode(Mode::USB); model.setFrequency(26100000);
   model.turnFrequency(3);
@@ -43,7 +43,9 @@ int main() {
     }
   }
   model.turnFrequency(INT_MIN); valid(model);
+  assert(model.bandIndex() == 0 && model.frequencyHz() == 153000);
   model.turnFrequency(INT_MAX); valid(model);
+  assert(model.bandIndex() == 3 && model.frequencyHz() == 108000000);
   model.setBand(2); model.setMode(Mode::USB); model.setFrequency(7100900); model.turnFrequency(2);
   assert(model.frequencyHz() == 7101100);
   drivers::TuneWord word;

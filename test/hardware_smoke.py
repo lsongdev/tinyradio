@@ -44,9 +44,10 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.1) as port:
     check('u', band='SW', mode='USB', confirmed=7101000)  # reload patch
     check('3f', band='VHF', mode='FM', confirmed=100000000)
     check('+' * 80, band='VHF', mode='FM', confirmed=108000000)
-    check('+', band='LW', mode='AM', confirmed=153000)
-    check('-', band='VHF', mode='FM', confirmed=108000000)
+    check('+' * 32, band='VHF', mode='FM', confirmed=108000000)
     check('-' * 80, band='VHF', mode='FM', confirmed=100000000)
+    check('0[', band='LW', mode='AM', confirmed=153000)
+    check('-' * 32, band='LW', mode='AM', confirmed=153000)
     check('0]', band='LW', mode='AM', confirmed=279000)
     check('+', band='MW', mode='AM', confirmed=520000)
     check('-', band='LW', mode='AM', confirmed=279000)

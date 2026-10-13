@@ -36,9 +36,6 @@ bool Model::setFrequency(uint32_t hz) {
 bool Model::turnFrequency(int turns) {
   const int direction = turns < 0 ? -1 : 1;
   int64_t remaining = turns < 0 ? -int64_t(turns) : turns;
-  int64_t cycle = 0;
-  for (size_t i = 0; i < bandCount; ++i)
-    if (bands[i].available) cycle += (bands[i].maxHz - bands[i].minHz) / stepForBand(i) + 1;
   while (remaining) {
     const uint32_t step = stepHz();
     const uint32_t distance = direction > 0 ? band().maxHz - frequencyHz() : frequencyHz() - band().minHz;
@@ -47,19 +44,12 @@ bool Model::turnFrequency(int turns) {
       return setFrequency(int64_t(frequencyHz()) + direction * remaining * step);
     memories_[bandIndex_].hz = int64_t(frequencyHz()) + direction * room * step;
     remaining -= room + 1;
-    turnBand(direction); // Skip unavailable bands and restore target mode/step.
+    int next = int(bandIndex_) + direction;
+    while (next >= 0 && next < int(bandCount) && !bands[next].available) next += direction;
+    if (next < 0 || next >= int(bandCount))
+      return setFrequency(direction > 0 ? band().maxHz : band().minHz);
+    setBand(next); // Cross adjacent bands, but never join the global endpoints.
     memories_[bandIndex_].hz = direction > 0 ? band().minHz : band().maxHz;
-    if (remaining >= cycle) {
-      // Skip complete cycles while preserving the same per-band memories as
-      // single-detent traversal. Bounds integer overflow and processing time.
-      for (size_t i = 0; i < bandCount; ++i) {
-        if (!bands[i].available) continue;
-        const uint32_t span = (bands[i].maxHz - bands[i].minHz) / stepForBand(i) * stepForBand(i);
-        memories_[i].hz = direction > 0 ? bands[i].minHz + span : bands[i].maxHz - span;
-      }
-      memories_[bandIndex_].hz = direction > 0 ? band().minHz : band().maxHz;
-      remaining %= cycle;
-    }
   }
   return true;
 }
