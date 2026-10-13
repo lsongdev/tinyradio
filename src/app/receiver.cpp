@@ -89,15 +89,9 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawLine(x + 4, 8, x + 8, 5, color); g.drawLine(x + 8, 5, x + 8, 15, color);
   g.drawLine(x + 8, 15, x + 4, 12, color);
   if (muted) { g.drawLine(x + 10, 7, x + 14, 13, color); g.drawLine(x + 14, 7, x + 10, 13, color); }
-  else if (chip.signal().qualityKnown && !reconfigure && !chip.tuning() && !chip.seeking()) {
-    if (chip.signal().stereo) {
-      g.drawFastVLine(x + 10, 9, 3, color);
-      g.drawLine(x + 12, 6, x + 14, 8, color); g.drawFastVLine(x + 14, 8, 5, color);
-      g.drawLine(x + 14, 12, x + 12, 14, color);
-    } else {
-      g.drawLine(x + 10, 8, x + 12, 9, color); g.drawFastVLine(x + 12, 9, 3, color);
-      g.drawLine(x + 12, 11, x + 10, 12, color);
-    }
+  else {
+    const int waves = volume == 0 ? 0 : (volume + 20) / 21;
+    for (int i = 0; i < waves; ++i) g.drawFastVLine(x + 10 + 2 * i, 9 - i, 3 + 2 * i, color);
   }
 }
 void drawRuler(lgfx::LGFXBase& g) {
@@ -193,8 +187,12 @@ void draw() {
   uint16_t color = field == Field::Brightness ? TFT_YELLOW : TFT_LIGHTGREY;
   drawSun(g, 196, color); g.setTextColor(color, TFT_BLACK);
   g.setCursor(212, 7); g.printf("%d%%", (brightness * 100 + 127) / 255);
+  const bool audioStatusKnown = chip.signal().qualityKnown && !reconfigure && !chip.tuning() && !chip.seeking();
+  const uint16_t speakerColor = muted ? TFT_RED : !audioStatusKnown ? TFT_DARKGREY :
+                                chip.signal().stereo ? TFT_CYAN : TFT_LIGHTGREY;
+  drawSpeaker(g, 238, speakerColor);
   color = field == Field::Volume ? TFT_YELLOW : muted ? TFT_RED : TFT_LIGHTGREY;
-  drawSpeaker(g, 238, color); g.setTextColor(color, TFT_BLACK);
+  g.setTextColor(color, TFT_BLACK);
   g.setCursor(254, 7); g.printf("%d%%", (volume * 100 + 31) / 63);
   color = !supply.plausible ? TFT_RED : supply.externalPowerLikely ? TFT_CYAN : supply.estimatedPercent < 20 ? TFT_RED : TFT_LIGHTGREY;
   g.drawRect(280, 6, 13, 9, color); g.drawFastVLine(293, 8, 5, color);

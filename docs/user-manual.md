@@ -45,7 +45,7 @@ Choose AM, LSB, or USB on LW/MW/SW, and FM on VHF. Band and mode choices that ar
 
 The BW, AGC, and SM controls adjust channel bandwidth, automatic gain control/attenuation, and soft-mute attenuation. SM is a soft-mute setting, not a squelch threshold. For the available values and technical behavior, see [Radio capabilities and implementation notes](radio.md).
 
-In FM, the main display can show confirmed RDS station name (PS) or radio text (RT) when received. The status area shows signal strength, SNR, channel validity, and compact receiver status. The volume icon indicates mono/stereo blend state where available.
+In FM, the main display can show confirmed RDS station name (PS) or radio text (RT) when received. The status area shows signal strength, SNR, channel validity, and compact receiver status. The volume icon is light gray for mono, cyan for stereo, dark gray while reception status is unknown, and red with a cross when muted. Its sound-wave lines show the volume level: none at zero, one at 1–33%, two at 34–67%, and three above 67%. When Volume is focused, the percentage turns yellow while the icon retains its reception color.
 
 ## Saved settings
 
