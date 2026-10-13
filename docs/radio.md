@@ -39,6 +39,8 @@ MW 默认 9 kHz 步进，从 999 kHz 起步，连续增减保持该栅格；切�
 
 FM 使用芯片 10 kHz 单位、50 μs 去加重；AM/SSB 载频使用 1 kHz 单位。AM 设置 3 kHz 滤波器，SSB 设置 2.2 kHz 滤波器并关闭 AFC；SW 使用天线调谐电容值 1，LW/MW 使用自动值 0。音量范围 0–63，默认 18。
 
+启用晶振（XOSCEN）时，每次 `POWER_UP` 命令完成后等待 500 ms，再进行首次调谐，遵循 AN332 的晶振稳定时间要求。CTS 只代表命令完成，不能代表晶振已稳定。开机恢复记忆频率、接收引擎切换和错误重试均经过此流程；同一引擎内的日常调谐不增加等待时间。
+
 进入 SSB 时先采用 `carrier_kHz = floor(hz/1000)`、`BFO = -(hz % 1000)`。连续调谐时在当前载频 ±8 kHz 范围内只修改 `BFO = -(hz - carrier_kHz*1000)`，避免每过一个 kHz 都重新等待载频调谐；超出窗口才重新设定载频。这里只保证编码可表达该细调量，不宣称未经校准的晶振具有 10 Hz 绝对频率精度。模式切换时先静音，收到确认频率后再开启音频。
 
 协议参考：[Skyworks AN332](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf)、[PU2CLR SSB 接口与补丁加载](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html)、[社区 BFO 换算](https://github.com/esp32-si4732/ats-mini/blob/ab4f5dc8120767cbb134b70096929f74c49df3e7/ats-mini/ats-mini.ino)。

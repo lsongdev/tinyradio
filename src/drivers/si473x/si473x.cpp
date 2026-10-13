@@ -58,7 +58,9 @@ bool Si473x::property(uint16_t id, uint16_t value) {
 bool Si473x::powerUp(uint8_t function) {
   const uint8_t bytes[] = {0x01, function, 0x05}; // Crystal oscillator, analog L/R output
   if (!command(bytes, sizeof bytes)) return false;
-  delay(10);
+  // AN332 POWER_UP: CTS only confirms command completion. With XOSCEN,
+  // allow at least 500 ms for the crystal to settle before the first tune.
+  delay(500);
   powered_ = true;
   return true;
 }
