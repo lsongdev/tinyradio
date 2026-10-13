@@ -137,9 +137,12 @@ void drawRuler(lgfx::LGFXBase& g) {
         const auto tickFrequency = radio::formatFrequency(tick.hz);
         snprintf(label, sizeof label, "%s%c", tickFrequency.number, tick.hz >= 1000000 ? 'M' : 'k');
       }
-      // A two-pixel label offset keeps SW/VHF names from touching, while
-      // preserving the exact same tick spacing and unbroken scale line.
-      const int labelX = tick.x + (edge ? (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2) : 0);
+      // Keep the SW endpoint label clear of the adjacent 26 MHz tick value.
+      // Moving the number outward leaves tick positions and the continuous
+      // scale unchanged.
+      const int labelX = edge
+          ? tick.x + (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2)
+          : (tick.band == 2 && tick.hz >= radio::bands[2].maxHz - 200000 ? tick.x - 10 : tick.x);
       const int labelWidth = g.textWidth(label);
       if (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6) {
         g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
