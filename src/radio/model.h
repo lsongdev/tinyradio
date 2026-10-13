@@ -3,6 +3,9 @@
 #include <stddef.h>
 namespace radio {
 using drivers::Mode;
+uint32_t stepOption(size_t bandIndex, Mode mode, int index);
+uint8_t stepOptionCount(size_t bandIndex, Mode mode);
+int stepOptionIndex(size_t bandIndex, Mode mode, uint32_t stepHz);
 struct Band { const char* name; uint32_t minHz, maxHz, initialHz; bool fm, available; };
 constexpr Band bands[] = {
   {"LW", 153000, 279000, 198000, false, true},
