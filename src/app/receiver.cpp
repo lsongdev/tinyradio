@@ -205,16 +205,19 @@ void draw() {
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
   g.setTextColor(failed ? TFT_RED : seekMode ? TFT_MAGENTA : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
   const bool showPs = !failed && !pending && !seekMode && chip.rdsPs()[0];
-  g.setFont(&fonts::efontCN_24); g.setTextSize(1);
+  constexpr int textTop = 22, textHeight = 46, regionWidth = 304;
+  g.setFont(&fonts::efontCN_24_b); g.setTextSize(1);
+  const float rdsScale = float(textHeight - 4) / g.fontHeight();
+  g.setTextSize(rdsScale);
   const int rtWidth = g.textWidth(chip.rdsText());
-  const uint32_t rtDuration = max(8000u, uint32_t(max(0, rtWidth - 304)) * 35u + 2400u);
+  const uint32_t rtDuration = max(8000u, uint32_t(max(0, rtWidth - regionWidth)) * 35u + 2400u);
   const bool showRt = !failed && !pending && !seekMode && chip.rdsText()[0] &&
                       (!showPs || millis() % (5000u + rtDuration) >= 5000u);
   const char* mainText = showRt ? chip.rdsText() : showPs ? chip.rdsPs() : frequency.number;
-  if (showPs || showRt) g.setFont(&fonts::efontCN_24); else g.setFont(&fonts::Font0);
-  g.setTextSize(showPs || showRt ? 1 : 4);
+  if (showPs || showRt) g.setFont(&fonts::efontCN_24_b); else g.setFont(&fonts::Font0);
+  g.setTextSize(showPs || showRt ? rdsScale : 4);
   g.setTextDatum(lgfx::textdatum_t::middle_left);
-  const int textWidth = g.textWidth(mainText), regionWidth = 304;
+  const int textWidth = g.textWidth(mainText);
   static char previousText[65]{}; static uint32_t scrollStarted = 0;
   if (strcmp(previousText, mainText)) {
     snprintf(previousText, sizeof previousText, "%s", mainText); scrollStarted = millis();
@@ -225,7 +228,8 @@ void draw() {
     const uint32_t phase = (millis() - scrollStarted) % (travel + 2400);
     offset = phase < 1200 ? 0 : phase < travel + 1200 ? (phase - 1200) / 35 : textWidth - regionWidth;
   }
-  g.setClipRect(8, 23, regionWidth, 38); g.drawString(mainText, 8 - offset, 43);
+  g.setClipRect(8, textTop, regionWidth, textHeight);
+  g.drawString(mainText, 8 - offset, textTop + textHeight / 2);
   g.setFont(&fonts::Font0); g.setTextSize(1);
   if (!showPs && !showRt) g.drawString(frequency.unit, 8 + textWidth + 3 - offset, 51);
   g.clearClipRect();
