@@ -11,6 +11,7 @@ struct Signal {
   uint8_t blend, gainIndex;
   bool pilot, softMuted, afcRail, agcEnabled, qualityKnown;
 };
+struct RdsStatus { bool synchronized = false; uint8_t queued = 0; uint32_t groups = 0, overruns = 0; };
 struct Revision { uint8_t part, major, minor, componentMajor, componentMinor, chip; uint16_t patch; };
 class Si473x {
 public:
@@ -26,6 +27,7 @@ public:
   bool poll(); // Nonblocking STC polling; confirmed frequency updated on completion.
   bool readSignal();
   bool readRds();
+  const RdsStatus& rdsStatus() const { return rdsStatus_; }
   const char* rdsPs() const { return rds_.text(); }
   const char* rdsText() const { return rds_.radioText(); }
   bool setReception(const ReceptionSettings& settings);
@@ -66,6 +68,7 @@ private:
   Signal signal_{};
   Revision revision_{};
   RdsDecoder rds_;
+  RdsStatus rdsStatus_{};
   uint32_t bandwidthHz_ = 0;
 };
 }
