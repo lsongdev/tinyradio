@@ -51,6 +51,8 @@ The application draws a 320 × 170 RGB565 sprite and presents the complete frame
 
 Yellow indicates encoder focus; cyan indicates active choices; disabled options are gray. Seek uses magenta. Soft mute engagement changes the SM text to orange while retaining the normal/focused border color.
 
+Detected USB power is shown as a full cyan battery icon with `USB` instead of a percentage. Implausible voltage readings retain `--%`; battery-powered percentage is an estimate.
+
 The volume icon is gray for mono, cyan for stereo blend, dark gray while quality is unknown, and red with a cross when muted. Its zero-to-three wave lines represent volume. Volume focus turns the percentage yellow without hiding the mono/stereo color.
 
 The ruler advances in 12-pixel minor divisions. Between adjacent bands, decorative positions reserve five minor divisions from the last frequency to the departing band name, one division between band names, and five divisions to the next frequency. Only the two name markers and actual frequency ticks are drawn. Decorative positions have no tunable frequency: crossing bands remains one encoder step. The red cursor's label always shows the actual frequency, including when RDS occupies the main area.

@@ -197,9 +197,11 @@ void draw() {
   g.setCursor(254, 7); g.printf("%d%%", (volume * 100 + 31) / 63);
   color = !supply.plausible ? TFT_RED : supply.externalPowerLikely ? TFT_CYAN : supply.estimatedPercent < 20 ? TFT_RED : TFT_LIGHTGREY;
   g.drawRect(280, 6, 13, 9, color); g.drawFastVLine(293, 8, 5, color);
-  if (supply.plausible && !supply.externalPowerLikely) g.fillRect(282, 8, supply.estimatedPercent * 9 / 100, 5, color);
+  if (supply.plausible) g.fillRect(282, 8, supply.externalPowerLikely ? 9 : supply.estimatedPercent * 9 / 100, 5, color);
   g.setTextColor(color, TFT_BLACK); g.setCursor(296, 7);
-  if (!supply.plausible || supply.externalPowerLikely) g.print("--%"); else g.printf("%u%%", supply.estimatedPercent);
+  if (!supply.plausible) g.print("--%");
+  else if (supply.externalPowerLikely) g.print("USB");
+  else g.printf("%u%%", supply.estimatedPercent);
 
   const uint32_t hz = model.frequencyHz();
   const auto frequency = radio::formatFrequency(hz);
