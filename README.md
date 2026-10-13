@@ -6,11 +6,12 @@
 
 Continuous tuning across LW, MW, SW, and VHF/FM, controlled by one encoder. Built for the ESP32-S3, with RDS station names and radio text, adjustable reception settings, and persistent band memories.
 
-<p align="center">
-  <img src="docs/images/screen-frequency.png" width="640" alt="Full receiver screen showing frequency, reception controls, signal status, and tuning scale">
-  <br>
-  <img src="docs/images/screen-rds.png" width="640" alt="Full receiver screen showing the received RDS station name in the shared main area">
-</p>
+<table>
+  <tr>
+    <td><img src="docs/images/screen-frequency.png" width="320" alt="Full receiver screen showing frequency, reception controls, signal status, and tuning scale"></td>
+    <td><img src="docs/images/screen-rds.png" width="320" alt="Full receiver screen showing the received RDS station name and radio text"></td>
+  </tr>
+</table>
 
 *Actual 320 × 170 framebuffer captures exported from the receiver over USB.*
 

@@ -137,7 +137,7 @@ USB diagnostics:
 
 ## Continuous integration and daily releases
 
-[`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) follows the GeekNest Radio build/publication pattern, adapted to this board and the `master` branch. Pushes, pull requests, and manual dispatch run `tools/test.sh`, build with pinned PlatformIO 6.1.18, and package firmware. Actions are pinned to verified commit hashes; PlatformIO platforms/packages are cached against `platformio.ini`.
+[`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) follows the GeekNest Radio build/publication pattern, adapted to this board and the `master` branch. One workflow coordinates both build and publication. Pushes, pull requests, and manual dispatch run `tools/test.sh`, build with pinned PlatformIO 6.1.18, and package firmware. Actions are pinned to verified commit hashes; PlatformIO platforms/packages are cached against `platformio.ini`.
 
 Successful `master` builds update one prerelease per Shanghai calendar day, tagged `daily-YYYY-MM-DD`. PR builds produce downloadable artifacts only. Publication is serialized and checks that its commit is still the head of `master`, preventing a superseded build from replacing a newer one.
 
