@@ -78,7 +78,7 @@ voltage = ADC_millivolts × 2 × batteryCalibration / 1000
 
 `batteryCalibration` defaults to 1.0. To calibrate, disconnect USB, measure `VCC_BAT` with a meter, and use measured voltage divided by the firmware reading. The 1.71/1.702 factors seen in other firmware convert raw ADC codes; applying them to calibrated millivolts would double-convert the reading.
 
-On battery power, `VCC_BAT` approximates cell voltage. With USB connected, it can instead reflect the USB path through SS34, so it is not a reliable cell measurement. The UI uses `--%` for suspected external power or an implausible reading. External power is inferred above 4.35 V; this heuristic cannot detect every USB-powered condition. Readings outside 2.5–5.5 V are treated as implausible.
+On battery power, `VCC_BAT` approximates cell voltage. With USB connected, it can instead reflect the USB path through SS34, so it is not a reliable cell measurement. The UI uses a full cyan battery icon and `USB` for suspected external power, and `--%` for an implausible reading. The full USB icon is a power-source indicator, not a claim that the cell is charged. External power is inferred above 4.35 V; this heuristic cannot detect every USB-powered condition. Readings outside 2.5–5.5 V are treated as implausible.
 
 On battery power, 3.2–4.2 V maps linearly to 0–100%, clamped to that range. This is an estimate, not a fuel gauge or an undervoltage protection mechanism. Cell capacity, chemistry, aging, and per-unit voltage calibration have not been established here.
 

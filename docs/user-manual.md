@@ -109,7 +109,7 @@ Normal firmware updates preserve NVS. If you switch off within the two-second sa
 
 ## Battery estimate
 
-The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered and may show `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware.md#battery-indication) for calibration and measurement limits.
+The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered. When external power is detected, the status bar shows a full cyan battery icon and `USB`; the full icon indicates USB power rather than measured cell charge. An implausible voltage reading shows `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware.md#battery-indication) for calibration and measurement limits.
 
 ## Screenshots
 
