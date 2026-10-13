@@ -101,86 +101,76 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color) {
   }
 }
 void drawRuler(lgfx::LGFXBase& g) {
-  struct Tick { uint32_t hz, step; size_t band; int x; bool valid; };
-  Tick ticks[27];
+  struct Tick { uint32_t hz, step; size_t band; int x; bool valid; const char* name; bool endpoint; };
+  Tick ticks[27]{};
   constexpr int center = 13, spacing = 12;
-  for (int i = 0; i < 27; ++i) {
-    const int offset = i - center;
+  ticks[center] = {model.frequencyHz(), model.stepHz(), model.bandIndex(), 160, true, nullptr, false};
+  // Names occupy ruler divisions, while tuning still crosses bands in one turn.
+  for (int direction : {-1, 1}) {
     radio::Model preview = model;
-    preview.turnFrequency(offset);
-    bool valid = true;
-    if (offset) {
-      radio::Model closer = model;
-      closer.turnFrequency(offset > 0 ? offset - 1 : offset + 1);
-      valid = closer.bandIndex() != preview.bandIndex() || closer.frequencyHz() != preview.frequencyHz();
+    int index = center;
+    while (index + direction >= 0 && index + direction < 27) {
+      radio::Model next = preview;
+      next.turnFrequency(direction);
+      if (next.bandIndex() == preview.bandIndex() && next.frequencyHz() == preview.frequencyHz()) break;
+      if (next.bandIndex() != preview.bandIndex()) {
+        ticks[index].endpoint = true;
+        for (int division = 1; division <= 10; ++division) {
+          index += direction;
+          if (index < 0 || index >= 27) break;
+          const bool departing = division <= 5;
+          const auto& side = departing ? preview : next;
+          const char* name = (division == 5 || division == 6) ? side.band().name : nullptr;
+          ticks[index] = {0, side.stepHz(), side.bandIndex(), 160 + (index - center) * spacing, true, name, false};
+        }
+        if (index + direction < 0 || index + direction >= 27) break;
+      }
+      index += direction;
+      ticks[index] = {next.frequencyHz(), next.stepHz(), next.bandIndex(), 160 + (index - center) * spacing,
+                      true, nullptr, next.bandIndex() != preview.bandIndex()};
+      preview = next;
     }
-    ticks[i] = {preview.frequencyHz(), preview.stepHz(), preview.bandIndex(), 0, valid};
   }
-  for (int i = 0; i < 27; ++i) ticks[i].x = 160 + (i - center) * spacing;
-
   const auto frequency = radio::formatFrequency(model.frequencyHz());
   char current[24]; snprintf(current, sizeof current, "%s%s", frequency.number, frequency.unit);
+  g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
   const int currentWidth = g.textWidth(current);
   g.drawFastHLine(0, 140, 320, TFT_DARKGREY);
-  g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
-  const auto isEdge = [&](int index) {
-    return (index > 0 && ticks[index - 1].valid && ticks[index - 1].band != ticks[index].band) ||
-           (index < 26 && ticks[index + 1].valid && ticks[index + 1].band != ticks[index].band);
-  };
-  const auto edgeLabelX = [&](int index) {
-    const auto& tick = ticks[index];
-    if (tick.band == 2 && index < 26 && ticks[index + 1].band != tick.band) {
-      for (int j = index - 1; j >= 0; --j) {
-        if (!ticks[j].valid || ticks[j].band != tick.band || isEdge(j)) continue;
-        if ((ticks[j].hz / ticks[j].step) % 5 == 0) return ticks[j].x + 5 * spacing;
-      }
-    }
-    if (tick.band == 3 && index > 0 && ticks[index - 1].band == 2) {
-      int swLabelX = ticks[index - 1].x;
-      for (int j = index - 2; j >= 0; --j) {
-        if (!ticks[j].valid || ticks[j].band != 2 || isEdge(j)) continue;
-        if ((ticks[j].hz / ticks[j].step) % 5 == 0) {
-          swLabelX = ticks[j].x + 5 * spacing;
-          break;
-        }
-      }
-      return swLabelX + 21;
-    }
-    return tick.x + (index > 0 && ticks[index - 1].band != tick.band ? 6 : -6);
-  };
   for (int i = 0; i < 27; ++i) {
     const auto& tick = ticks[i];
-    if (!tick.valid || tick.x < 0 || tick.x >= 320) continue;
-    const bool edge = isEdge(i);
-    const bool major = edge || (tick.hz / tick.step) % 5 == 0;
+    if (!tick.valid) continue;
+    const bool major = tick.name || tick.endpoint || (tick.hz && (tick.hz / tick.step) % 5 == 0);
     const bool adjacent = tick.band != model.bandIndex();
     g.drawFastVLine(tick.x, 140, major ? 12 : 6, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
-    if (major) {
-      char label[20];
-      if (edge) snprintf(label, sizeof label, "%s", radio::bands[tick.band].name);
-      else {
-        const auto tickFrequency = radio::formatFrequency(tick.hz);
-        snprintf(label, sizeof label, "%s%c", tickFrequency.number, tick.hz >= 1000000 ? 'M' : 'k');
-      }
-      const int labelX = edge ? edgeLabelX(i) : tick.x;
-      const int labelWidth = g.textWidth(label);
-      bool collidesWithBandName = false;
-      if (!edge) {
-        for (int j = 0; j < 27; ++j) {
-          if (!ticks[j].valid || !isEdge(j)) continue;
-          const int nameWidth = g.textWidth(radio::bands[ticks[j].band].name);
-          if (abs(labelX - edgeLabelX(j)) * 2 < labelWidth + nameWidth + 2) {
-            collidesWithBandName = true;
-            break;
-          }
-        }
-      }
-      if (!collidesWithBandName &&
-          (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6)) {
-        g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
+    if (!major) continue;
+    char label[20];
+    if (tick.name) snprintf(label, sizeof label, "%s", tick.name);
+    else {
+      const auto value = radio::formatFrequency(tick.hz);
+      snprintf(label, sizeof label, "%s%c", value.number, tick.hz >= 1000000 ? 'M' : 'k');
+    }
+    const int width = g.textWidth(label);
+    // Adjacent band names face away from one another, each anchored to its tick.
+    const bool right = tick.name && i + 1 < 27 && ticks[i + 1].name;
+    const bool left = tick.name && i > 0 && ticks[i - 1].name;
+    const int labelLeft = tick.x - (right ? width : left ? 0 : width / 2);
+    const int labelRight = labelLeft + width;
+    if (labelRight >= 160 - currentWidth / 2 - 6 && labelLeft <= 160 + currentWidth / 2 + 6) continue;
+    bool collision = false;
+    if (!tick.endpoint && !tick.name) {
+      for (const auto& other : ticks) {
+        if (!other.valid || !other.endpoint) continue;
+        const auto value = radio::formatFrequency(other.hz);
+        char endpoint[20]; snprintf(endpoint, sizeof endpoint, "%s%c", value.number, other.hz >= 1000000 ? 'M' : 'k');
+        const int endpointWidth = g.textWidth(endpoint);
+        if (labelRight >= other.x - endpointWidth / 2 - 2 && labelLeft <= other.x + endpointWidth / 2 + 2) collision = true;
       }
     }
+    if (collision) continue;
+    g.setTextDatum(right ? lgfx::textdatum_t::top_right : left ? lgfx::textdatum_t::top_left : lgfx::textdatum_t::top_center);
+    g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, tick.x, 159);
   }
+  g.setTextDatum(lgfx::textdatum_t::top_center);
   g.fillTriangle(155, 133, 165, 133, 160, 139, TFT_RED);
   g.drawFastVLine(160, 140, 14, TFT_RED);
   g.setTextColor(TFT_RED, TFT_BLACK); g.drawString(current, 160, 159);
