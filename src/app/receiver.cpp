@@ -1,6 +1,7 @@
 #include "receiver.h"
 #include "drivers/si473x/si473x.h"
 #include "radio/model.h"
+#include "radio/frequency.h"
 #include "radio/saved_settings.h"
 #include "hal/settings_storage.h"
 #include "hal/audio.h"
@@ -32,12 +33,6 @@ radio::SettingsBytes observedSettings{}, storedSettings{};
 bool storageReady = false, settingsStored = false, savePending = false;
 uint32_t lastSettingsChange = 0, lastSaveAttempt = 0, settingsWrites = 0;
 auto settings() -> drivers::ReceptionSettings& { return reception[static_cast<unsigned>(model.mode())]; }
-void frequencyText(char* text, size_t size, bool unit) {
-  const uint32_t hz = model.frequencyHz();
-  if (model.band().fm) snprintf(text, size, "%lu.%02lu%s", static_cast<unsigned long>(hz / 1000000), static_cast<unsigned long>(hz % 1000000 / 10000), unit ? "MHz" : "");
-  else if (drivers::isSsb(model.mode())) snprintf(text, size, "%lu.%03lu%s", static_cast<unsigned long>(hz / 1000), static_cast<unsigned long>(hz % 1000), unit ? "kHz" : "");
-  else snprintf(text, size, "%lu%s", static_cast<unsigned long>(hz / 1000), unit ? "kHz" : "");
-}
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
 radio::SavedSettings savedSettings() {
   radio::SavedSettings saved; saved.tuning = model.state();
@@ -122,7 +117,8 @@ void drawRuler(lgfx::LGFXBase& g) {
   }
   for (int i = 0; i < 27; ++i) ticks[i].x = 160 + (i - center) * spacing;
 
-  char current[24]; frequencyText(current, sizeof current, true);
+  const auto frequency = radio::formatFrequency(model.frequencyHz());
+  char current[24]; snprintf(current, sizeof current, "%s%s", frequency.number, frequency.unit);
   const int currentWidth = g.textWidth(current);
   g.drawFastHLine(0, 140, 320, TFT_DARKGREY);
   g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
@@ -137,9 +133,10 @@ void drawRuler(lgfx::LGFXBase& g) {
     if (major) {
       char label[20];
       if (edge) snprintf(label, sizeof label, "%s", radio::bands[tick.band].name);
-      else if (radio::bands[tick.band].fm) snprintf(label, sizeof label, "%lu.%02luM", static_cast<unsigned long>(tick.hz / 1000000), static_cast<unsigned long>(tick.hz % 1000000 / 10000));
-      else if (tick.step < 1000) snprintf(label, sizeof label, "%lu.%02luk", static_cast<unsigned long>(tick.hz / 1000), static_cast<unsigned long>(tick.hz % 1000 / 10));
-      else snprintf(label, sizeof label, "%luk", static_cast<unsigned long>(tick.hz / 1000));
+      else {
+        const auto tickFrequency = radio::formatFrequency(tick.hz);
+        snprintf(label, sizeof label, "%s%c", tickFrequency.number, tick.hz >= 1000000 ? 'M' : 'k');
+      }
       // A two-pixel label offset keeps SW/VHF names from touching, while
       // preserving the exact same tick spacing and unbroken scale line.
       const int labelX = tick.x + (edge ? (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2) : 0);
@@ -179,8 +176,8 @@ void draw() {
   g.setTextColor(color, TFT_BLACK); g.setCursor(296, 7);
   if (!supply.plausible || supply.externalPowerLikely) g.print("--%"); else g.printf("%u%%", supply.estimatedPercent);
 
-  const uint32_t hz = model.frequencyHz(); char frequency[20];
-  frequencyText(frequency, sizeof frequency, false);
+  const uint32_t hz = model.frequencyHz();
+  const auto frequency = radio::formatFrequency(hz);
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
   g.setTextColor(failed ? TFT_RED : seekMode ? TFT_MAGENTA : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
   const bool showPs = !failed && !pending && !seekMode && chip.rdsPs()[0];
@@ -189,7 +186,7 @@ void draw() {
   const uint32_t rtDuration = max(8000u, uint32_t(max(0, rtWidth - 304)) * 35u + 2400u);
   const bool showRt = !failed && !pending && !seekMode && chip.rdsText()[0] &&
                       (!showPs || millis() % (5000u + rtDuration) >= 5000u);
-  const char* mainText = showRt ? chip.rdsText() : showPs ? chip.rdsPs() : frequency;
+  const char* mainText = showRt ? chip.rdsText() : showPs ? chip.rdsPs() : frequency.number;
   if (showPs || showRt) g.setFont(&fonts::efontCN_24); else g.setFont(&fonts::Font0);
   g.setTextSize(showPs || showRt ? 1 : 4);
   g.setTextDatum(lgfx::textdatum_t::middle_left);
@@ -206,7 +203,7 @@ void draw() {
   }
   g.setClipRect(8, 23, regionWidth, 38); g.drawString(mainText, 8 - offset, 43);
   g.setFont(&fonts::Font0); g.setTextSize(1);
-  if (!showPs && !showRt) g.drawString(model.band().fm ? "MHz" : "kHz", 8 + textWidth + 3 - offset, 51);
+  if (!showPs && !showRt) g.drawString(frequency.unit, 8 + textWidth + 3 - offset, 51);
   g.clearClipRect();
   if (seekMode && (chip.seeking() || pendingSeek)) {
     const int direction = pendingSeek ? pendingSeek : seekDirection;

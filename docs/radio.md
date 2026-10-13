@@ -121,7 +121,7 @@ SEEK 版本验证：构建/刷入哈希校验、原生模型测试和 `test/seek
 
 FM 使用 FM_CHANNEL_FILTER / FM_AGC_OVERRIDE / FM_SOFT_MUTE_MAX_ATTENUATION；AM 使用 AM_CHANNEL_FILTER / AM_AGC_OVERRIDE / AM_SOFT_MUTE_MAX_ATTENUATION；SSB 使用补丁的 SSB_MODE / AM_AGC_OVERRIDE / SSB_SOFT_MUTE_MAX_ATTENUATION，保持 AVC 开启与 AFC 禁用，窄于等于 2 kHz 时 SBCUTFLT=0。来源：[Skyworks AN332](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf)、[PU2CLR SSB 配置](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html)。
 
-红色指针下方始终显示当前模型频率及单位，SSB 保留 1 Hz 精度；仅避让附近的文字标签，不改变刻度间隔、连续基线或频段边界。
+红色指针下方始终显示当前模型频率及单位，SSB 保留 1 Hz 精度；主显示区与刻度尺统一使用 `src/radio/frequency.h` 的整数格式化，频率 ≥1 MHz 使用 MHz、其余使用 kHz，去除小数末尾零（例如 2300000 Hz → 2.3MHz，2300100 Hz → 2.3001MHz，999100 Hz → 999.1kHz），不舍弃有效 Hz 精度；仅避让附近的文字标签，不改变刻度间隔、连续基线或频段边界。
 
 大字区域靠左显示频率，较小的 MHz/kHz 单位紧随数字并对齐底部；收到确认的 RDS PS 时显示电台名，收到 RT 时显示广播文本，两者都有则 PS 停留 5 秒后显示 RT，并留足一次完整滚动的时间。长文本按 35 ms/像素水平滚动，起止各停留 1.2 秒，裁剪在主显示区内，文字更新后从头开始。没有有效 RDS，或正在调谐/搜索时显示频率。
 
