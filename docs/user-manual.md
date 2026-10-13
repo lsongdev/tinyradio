@@ -49,7 +49,7 @@ In FM, the main display can show confirmed RDS station name (PS) or radio text (
 
 ## Saved settings
 
-The firmware stores the selected band, each available band's frequency/mode/step, volume, brightness, mute state, and per-mode BW/AGC/SM settings in ESP32 non-volatile storage (NVS). Changes are saved after two seconds without adjustments and restored after a restart. Focus returns to Band at startup, and seek always starts in manual tuning mode.
+The firmware stores the selected band, each available band's frequency/mode/step, volume, brightness, mute state, and per-mode BW/AGC/SM settings in ESP32 non-volatile storage (NVS). Changes are saved after two seconds without adjustments and restored after a restart. Focus starts on Frequency at startup, and seek always starts in manual tuning mode.
 
 Normal firmware uploads preserve NVS. If power is removed before the two-second save delay completes, the latest change may not be retained.
 
