@@ -1,0 +1,4 @@
+# Preserve original hardware documents and treat them as binary assets.
+*.pdf binary
+# Keep the upstream SSB patch byte-for-byte, including its original comments.
+src/drivers/si473x/patches/** -whitespace
