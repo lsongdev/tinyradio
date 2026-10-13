@@ -24,14 +24,15 @@ Field field = Field::Band;
 int volume = 18, appliedVolume = -1;
 int brightness = 128;
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
-bool reconfigure = true, held = false, previousPressed = false, audioReady = false;
+bool reconfigure = true, held = false, previousPressed = false, audioReady = false, seekMode = false;
+int pendingSeek = 0, seekDirection = 0;
 uint32_t pressedAt = 0, editedAt = 0, lastSignal = 0, lastBattery = 0, lastDraw = 0, lastTune = 0;
 void report() {
   const auto& s = chip.signal();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d mute=%d tuning=%d RSSI=%u SNR=%u error=%s\n",
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d mute=%d tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
     static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, muted,
-    chip.tuning(), s.rssi, s.snr, chip.errorText());
+    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawCircle(x + 6, 10, 3, color);
@@ -45,7 +46,16 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawLine(x + 4, 8, x + 8, 5, color); g.drawLine(x + 8, 5, x + 8, 15, color);
   g.drawLine(x + 8, 15, x + 4, 12, color);
   if (muted) { g.drawLine(x + 10, 7, x + 14, 13, color); g.drawLine(x + 14, 7, x + 10, 13, color); }
-  else { g.drawLine(x + 11, 7, x + 13, 9, color); g.drawLine(x + 13, 9, x + 13, 11, color); g.drawLine(x + 13, 11, x + 11, 13, color); }
+  else if (chip.signal().qualityKnown && !reconfigure && !chip.tuning() && !chip.seeking()) {
+    if (chip.signal().stereo) {
+      g.drawFastVLine(x + 10, 9, 3, color);
+      g.drawLine(x + 12, 6, x + 14, 8, color); g.drawFastVLine(x + 14, 8, 5, color);
+      g.drawLine(x + 14, 12, x + 12, 14, color);
+    } else {
+      g.drawLine(x + 10, 8, x + 12, 9, color); g.drawFastVLine(x + 12, 9, 3, color);
+      g.drawLine(x + 12, 11, x + 10, 12, color);
+    }
+  }
 }
 void drawRuler(lgfx::LGFXBase& g) {
   struct Tick { uint32_t hz, step; size_t band; int x; bool valid; };
@@ -65,7 +75,7 @@ void drawRuler(lgfx::LGFXBase& g) {
   }
   for (int i = 0; i < 27; ++i) ticks[i].x = 160 + (i - center) * spacing;
 
-  g.drawFastHLine(0, 130, 320, TFT_DARKGREY);
+  g.drawFastHLine(0, 140, 320, TFT_DARKGREY);
   g.setTextSize(1); g.setTextDatum(lgfx::textdatum_t::top_center);
   for (int i = 0; i < 27; ++i) {
     const auto& tick = ticks[i];
@@ -74,7 +84,7 @@ void drawRuler(lgfx::LGFXBase& g) {
                       (i < 26 && ticks[i + 1].valid && ticks[i + 1].band != tick.band);
     const bool major = edge || (tick.hz / tick.step) % 5 == 0;
     const bool adjacent = tick.band != model.bandIndex();
-    g.drawFastVLine(tick.x, 130, major ? 17 : 8, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
+    g.drawFastVLine(tick.x, 140, major ? 12 : 6, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
     if (major) {
       char label[20];
       if (edge) snprintf(label, sizeof label, "%s", radio::bands[tick.band].name);
@@ -84,11 +94,11 @@ void drawRuler(lgfx::LGFXBase& g) {
       // A two-pixel label offset keeps SW/VHF names from touching, while
       // preserving the exact same tick spacing and unbroken scale line.
       const int labelX = tick.x + (edge ? (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2) : 0);
-      g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 151);
+      g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
     }
   }
-  g.fillTriangle(155, 123, 165, 123, 160, 129, TFT_RED);
-  g.drawFastVLine(160, 130, 18, TFT_RED);
+  g.fillTriangle(155, 133, 165, 133, 160, 139, TFT_RED);
+  g.drawFastVLine(160, 140, 14, TFT_RED);
   g.setTextDatum(lgfx::textdatum_t::top_left);
 }
 void draw() {
@@ -105,24 +115,29 @@ void draw() {
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
   uint16_t color = field == Field::Brightness ? TFT_YELLOW : TFT_LIGHTGREY;
-  drawSun(g, 176, color); g.setTextColor(color, TFT_BLACK);
-  g.setCursor(192, 7); g.printf("%d%%", (brightness * 100 + 127) / 255);
+  drawSun(g, 196, color); g.setTextColor(color, TFT_BLACK);
+  g.setCursor(212, 7); g.printf("%d%%", (brightness * 100 + 127) / 255);
   color = field == Field::Volume ? TFT_YELLOW : muted ? TFT_RED : TFT_LIGHTGREY;
-  drawSpeaker(g, 224, color); g.setTextColor(color, TFT_BLACK);
-  g.setCursor(241, 7); g.printf("%d%%", (volume * 100 + 31) / 63);
+  drawSpeaker(g, 238, color); g.setTextColor(color, TFT_BLACK);
+  g.setCursor(254, 7); g.printf("%d%%", (volume * 100 + 31) / 63);
   color = !supply.plausible ? TFT_RED : supply.externalPowerLikely ? TFT_CYAN : supply.estimatedPercent < 20 ? TFT_RED : TFT_LIGHTGREY;
-  g.drawRect(272, 6, 13, 9, color); g.drawFastVLine(285, 8, 5, color);
-  if (supply.plausible && !supply.externalPowerLikely) g.fillRect(274, 8, supply.estimatedPercent * 9 / 100, 5, color);
-  g.setTextColor(color, TFT_BLACK); g.setCursor(289, 7);
+  g.drawRect(280, 6, 13, 9, color); g.drawFastVLine(293, 8, 5, color);
+  if (supply.plausible && !supply.externalPowerLikely) g.fillRect(282, 8, supply.estimatedPercent * 9 / 100, 5, color);
+  g.setTextColor(color, TFT_BLACK); g.setCursor(296, 7);
   if (!supply.plausible || supply.externalPowerLikely) g.print("--%"); else g.printf("%u%%", supply.estimatedPercent);
 
   const uint32_t hz = model.frequencyHz(); char frequency[20];
   if (model.band().fm) snprintf(frequency, sizeof frequency, "%lu.%02lu", static_cast<unsigned long>(hz / 1000000), static_cast<unsigned long>(hz % 1000000 / 10000));
   else if (drivers::isSsb(model.mode())) snprintf(frequency, sizeof frequency, "%lu.%03lu", static_cast<unsigned long>(hz / 1000), static_cast<unsigned long>(hz % 1000));
   else snprintf(frequency, sizeof frequency, "%lu", static_cast<unsigned long>(hz / 1000));
-  const bool pending = reconfigure || chip.tuning() || chip.frequencyHz() != hz;
-  g.setTextColor(failed ? TFT_RED : field == Field::Frequency ? TFT_CYAN : TFT_WHITE, TFT_BLACK);
+  const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
+  g.setTextColor(failed ? TFT_RED : seekMode ? TFT_ORANGE : field == Field::Frequency ? TFT_CYAN : TFT_WHITE, TFT_BLACK);
   g.setTextSize(4); g.setTextDatum(lgfx::textdatum_t::middle_center); g.drawString(frequency, 151, 49);
+  if (seekMode && (chip.seeking() || pendingSeek)) {
+    const int direction = pendingSeek ? pendingSeek : seekDirection;
+    if (direction > 0) g.fillTriangle(303, 39, 303, 53, 312, 46, TFT_ORANGE);
+    else g.fillTriangle(17, 39, 17, 53, 8, 46, TFT_ORANGE);
+  }
   g.setTextSize(1); g.setTextColor(pending ? TFT_DARKGREY : TFT_LIGHTGREY, TFT_BLACK); g.drawString(model.band().fm ? "MHz" : "kHz", 286, 57);
   for (int i = 0; i < 4; ++i) {
     const auto mode = static_cast<drivers::Mode>(i); const int x = 8 + i * 78;
@@ -132,27 +147,45 @@ void draw() {
     g.setTextColor(ink, TFT_BLACK); g.drawString(drivers::modeName(mode), x + 35, 90);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
-  // Ten bars are a visual RSSI indicator, not a calibrated S-meter.
-  const int bars = failed || pending ? 0 : constrain((chip.signal().rssi + 5) / 6, 0, 10);
-  for (int i = 0; i < 10; ++i) {
-    const int height = 3 + i;
-    g.fillRect(8 + i * 5, 120 - height, 3, height, i < bars ? TFT_GREEN : TFT_DARKGREY);
-  }
-  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(66, 111);
-  if (failed) g.print(chip.errorText()); else g.printf("S/N %u dB", chip.signal().snr);
-  if (!failed) {
-    g.setTextColor(field == Field::Step ? TFT_YELLOW : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(222, 111);
-    if (model.stepHz() >= 1000) g.printf("%lu kHz", static_cast<unsigned long>(model.stepHz() / 1000));
-    else g.printf("%lu Hz", static_cast<unsigned long>(model.stepHz()));
+  // Equal-height RSSI segments plus the actual chip metrics.
+  const auto& signal = chip.signal();
+  const bool stable = !failed && !pending && signal.qualityKnown;
+  const int bars = stable ? constrain((signal.rssi + 5) / 6, 0, 10) : 0;
+  for (int i = 0; i < 10; ++i)
+    g.fillRect(8 + i * 4, 105, 3, 8, i < bars ? TFT_GREEN : TFT_DARKGREY);
+  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(54, 105);
+  if (stable) g.printf("%u dBuV", signal.rssi); else g.print("-- dBuV");
+  g.setCursor(106, 105); if (stable) g.printf("SN %udB", signal.snr); else g.print("SN --");
+  g.setCursor(158, 105);
+  const uint32_t bw = chip.bandwidthHz();
+  if (!bw) g.print("BW AUTO"); else g.printf("BW %lu.%luk", static_cast<unsigned long>(bw / 1000), static_cast<unsigned long>(bw % 1000 / 100));
+  g.setTextColor(field == Field::Step ? TFT_YELLOW : TFT_LIGHTGREY, TFT_BLACK); g.setCursor(246, 105);
+  if (model.stepHz() >= 1000) g.printf("%lukHz", static_cast<unsigned long>(model.stepHz() / 1000));
+  else g.printf("%luHz", static_cast<unsigned long>(model.stepHz()));
+  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK); g.setCursor(8, 117);
+  if (failed) { g.setTextColor(TFT_RED, TFT_BLACK); g.print(chip.errorText()); }
+  else if (pending) g.print(chip.seeking() ? "SEEK" : "TUNING");
+  else if (stable) {
+    g.setTextColor(signal.valid ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK); g.print(signal.valid ? "VALID" : "INVALID");
+    g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    g.setCursor(64, 117); g.printf("%s:%u", signal.agcEnabled ? "AGC" : "ATT", signal.gainIndex);
+    g.setCursor(126, 117); g.printf("SM %u", signal.softMuted);
+    if (model.band().fm) { g.setCursor(166, 117); g.printf("P %u", signal.pilot); }
+    g.setCursor(210, 117); g.setTextColor(signal.afcRail ? TFT_RED : TFT_LIGHTGREY, TFT_BLACK); g.print(signal.afcRail ? "AFC!" : "AFC OK");
+    if (muted) { g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(262, 117); g.print("MUTE"); }
   }
   drawRuler(g);
   if (buffered) frame.pushSprite(0, 0);
 }
 void fail() {
-  failed = true; audioReady = false; audio.setMuted(true); audio.setSpeakerEnabled(false);
+  failed = true; seekMode = false; pendingSeek = seekDirection = 0; audioReady = false; audio.setMuted(true); audio.setSpeakerEnabled(false);
   dirty = true; report();
 }
-void changedConfiguration() { reconfigure = true; editedAt = millis(); dirty = true; }
+void changedConfiguration() {
+  if (chip.seeking() && !chip.cancelSeek()) fail();
+  seekMode = false; pendingSeek = seekDirection = 0;
+  reconfigure = true; editedAt = millis(); dirty = true;
+}
 void retry() {
   audio.setMuted(true); audio.setSpeakerEnabled(false);
   hardware.reset(); failed = !chip.begin(); appliedVolume = -1;
@@ -164,9 +197,41 @@ void tuneBy(int delta) {
   if (before != model.bandIndex()) changedConfiguration();
   dirty = true;
 }
+void stopSeek(bool manual) {
+  pendingSeek = seekDirection = 0;
+  if (chip.seeking()) {
+    if (!chip.cancelSeek()) fail();
+    else model.setFrequency(chip.frequencyHz());
+  }
+  if (manual) seekMode = false;
+  dirty = true;
+}
+void requestSeek(int delta) {
+  if (failed || drivers::isSsb(model.mode()) || !delta) return;
+  const int direction = delta > 0 ? 1 : -1;
+  if (chip.seeking() && direction == seekDirection) return; // No queued station skipping.
+  if (chip.seeking()) stopSeek(false);
+  pendingSeek = direction; dirty = true;
+}
+void adjustFrequency(int delta) {
+  if (seekMode) requestSeek(delta); else tuneBy(delta);
+}
+void longPress() {
+  if (field == Field::Frequency) {
+    if (seekMode) stopSeek(true);
+    else if (!failed && !drivers::isSsb(model.mode())) { seekMode = true; dirty = true; }
+  } else if (field == Field::Volume) {
+    muted = !muted; if (audioReady) audio.setMuted(muted); dirty = true;
+  }
+}
+void shortPress() {
+  if (failed) retry();
+  else if (seekMode || chip.seeking() || pendingSeek) stopSeek(true);
+  else { field = static_cast<Field>((static_cast<int>(field) + 1) % 6); dirty = true; }
+}
 void turn(int delta) {
   switch (field) {
-    case Field::Frequency: tuneBy(delta); break;
+    case Field::Frequency: adjustFrequency(delta); break;
     case Field::Band: model.turnBand(delta); changedConfiguration(); break;
     case Field::Mode: model.turnMode(delta); changedConfiguration(); break;
     case Field::Step: model.turnStep(delta); break;
@@ -184,11 +249,13 @@ void serialInput() {
       const auto mode = c == 'a' ? drivers::Mode::AM : c == 'l' ? drivers::Mode::LSB : c == 'u' ? drivers::Mode::USB : drivers::Mode::FM;
       if (model.setMode(mode)) changedConfiguration();
       else Serial.println("Mode unavailable on this band");
-    } else if (c == '+' || c == '-') { tuneBy(c == '+' ? 1 : -1); }
+    } else if (c == '+' || c == '-') { adjustFrequency(c == '+' ? 1 : -1); }
     else if (c == '[' || c == ']') {
-      model.setFrequency(c == '[' ? model.band().minHz : model.band().maxHz); dirty = true;
+      stopSeek(true); model.setFrequency(c == '[' ? model.band().minHz : model.band().maxHz); dirty = true;
     }
     else if (c == 'm') { muted = !muted; if (audioReady) audio.setMuted(muted); dirty = true; }
+    else if (c == 'e') shortPress();
+    else if (c == 'h') longPress();
     else if (c == '?') report();
     else if (c == 'r') retry();
   }
@@ -211,14 +278,15 @@ void beginReceiver() {
 void updateReceiver() {
   const uint32_t now = millis();
   button.update(now);
-  if (button.pressed() && !previousPressed) { pressedAt = now; held = false; }
+  if (button.pressed() && !previousPressed) {
+    pressedAt = now; held = false;
+    if (chip.seeking() || pendingSeek) { stopSeek(true); held = true; }
+  }
   if (button.pressed() && !held && now - pressedAt >= 650) {
-    held = true; muted = !muted; if (audioReady) audio.setMuted(muted); dirty = true;
+    held = true; longPress();
   }
   if (!button.pressed() && previousPressed && !held) {
-    if (failed) retry();
-    else field = static_cast<Field>((static_cast<int>(field) + 1) % 6);
-    dirty = true;
+    shortPress();
   }
   previousPressed = button.pressed();
   const int delta = encoder.update(); if (delta) turn(delta);
@@ -234,21 +302,31 @@ void updateReceiver() {
     dirty = true;
   }
   if (!failed && !reconfigure) {
-    const bool wasTuning = chip.tuning();
+    const bool wasTuning = chip.tuning(), wasSeeking = chip.seeking();
     if (!chip.poll()) fail();
+    if (!failed && wasSeeking) {
+      model.setFrequency(chip.frequencyHz()); dirty = true;
+      if (!chip.seeking()) { seekDirection = 0; report(); }
+    }
     if (wasTuning && !chip.tuning()) { dirty = true; report(); }
-    if (!failed && !chip.tuning() && chip.frequencyHz() != model.frequencyHz() && now - lastTune >= 30) {
+    if (!failed && pendingSeek && !chip.tuning() && !chip.seeking() && chip.frequencyHz() == model.frequencyHz()) {
+      seekDirection = pendingSeek; pendingSeek = 0;
+      audio.setMuted(true); audioReady = false;
+      if (!chip.seek(seekDirection > 0, model.band().minHz, model.band().maxHz, model.stepHz())) fail();
+      dirty = true;
+    }
+    if (!failed && !chip.tuning() && !chip.seeking() && chip.frequencyHz() != model.frequencyHz() && now - lastTune >= 30) {
       lastTune = now;
       if (!chip.tune(model.frequencyHz())) fail();
       dirty = true;
     }
-    if (!failed && !chip.tuning() && chip.frequencyHz() == model.frequencyHz() && !audioReady) {
+    if (!failed && !chip.tuning() && !chip.seeking() && !pendingSeek && chip.frequencyHz() == model.frequencyHz() && !audioReady) {
       audioReady = true; audio.setSpeakerEnabled(true); audio.setMuted(muted); dirty = true;
     }
     if (!failed && appliedVolume != volume) {
       if (!chip.setVolume(volume)) fail(); else appliedVolume = volume;
     }
-    if (!failed && !chip.tuning() && now - lastSignal >= 500) {
+    if (!failed && !chip.tuning() && !chip.seeking() && now - lastSignal >= 500) {
       lastSignal = now; if (!chip.readSignal()) fail(); dirty = true;
     }
   }

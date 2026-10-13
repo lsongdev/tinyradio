@@ -3,7 +3,7 @@
 #include "patches/ssb.h"
 namespace drivers {
 bool Si473x::fail(Error error) {
-  error_ = error; configured_ = false; tuning_ = false; carrierKnown_ = false;
+  error_ = error; configured_ = false; tuning_ = seeking_ = false; carrierKnown_ = false;
   return false;
 }
 const char* Si473x::errorText() const {
@@ -13,7 +13,7 @@ const char* Si473x::errorText() const {
 }
 bool Si473x::begin() {
   error_ = Error::None; powered_ = configured_ = tuning_ = carrierKnown_ = false;
-  confirmedHz_ = 0; revision_ = {}; signal_ = {};
+  confirmedHz_ = 0; revision_ = {}; signal_ = {}; seeking_ = false; seekResult_ = SeekResult::None;
   for (uint8_t address : {uint8_t(0x11), uint8_t(0x63)}) {
     bus_.beginTransmission(address);
     if (bus_.endTransmission() == 0) { address_ = address; return true; }
@@ -101,6 +101,7 @@ bool Si473x::loadSsb() {
   return property(0x0101, 0x9011) && property(0x3302, 0);
 }
 bool Si473x::configure(Mode mode, uint8_t volume) {
+  if (seeking_ && !cancelSeek()) return false;
   const bool sameEngine = configured_ && (mode == mode_ || (isSsb(mode) && isSsb(mode_)));
   error_ = Error::None;
   if (!sameEngine) {
@@ -115,7 +116,7 @@ bool Si473x::configure(Mode mode, uint8_t volume) {
     } else {
       if (!powerUp(mode == Mode::FM ? 0x10 : 0x11) || !getRevision()) return false;
       if (mode == Mode::FM) {
-        if (!property(0x1100, 1)) return false; // 50us FM de-emphasis
+        if (!property(0x1100, 1) || !property(0x1102, 0)) return false; // 50us FM de-emphasis
       } else if (!property(0x3102, 2) || !property(0x3302, 0)) return false; // AM 3kHz, soft mute off
     }
   }
@@ -127,7 +128,7 @@ bool Si473x::configure(Mode mode, uint8_t volume) {
 bool Si473x::setVolume(uint8_t volume) { return property(0x4000, volume > 63 ? 63 : volume); }
 bool Si473x::setMuted(bool muted) { return property(0x4001, muted ? 3 : 0); }
 bool Si473x::tune(uint32_t hz) {
-  if (!configured_) return false;
+  if (!configured_ || seeking_) return false;
   TuneWord word;
   if (!encodeFrequency(mode_, hz, word)) return fail(Error::Frequency);
   if (isSsb(mode_) && carrierKnown_) {
@@ -151,7 +152,63 @@ bool Si473x::tune(uint32_t hz) {
   tuneStarted_ = lastPoll_ = millis(); tuning_ = true; carrierKnown_ = false;
   return true;
 }
+bool Si473x::seek(bool up, uint32_t lowerHz, uint32_t upperHz, uint32_t spacingHz) {
+  if (!configured_ || tuning_ || seeking_ || isSsb(mode_)) return false;
+  TuneWord low, high;
+  if (lowerHz > upperHz || !encodeFrequency(mode_, lowerHz, low) || !encodeFrequency(mode_, upperHz, high))
+    return fail(Error::Frequency);
+  const uint16_t base = mode_ == Mode::FM ? 0x1400 : 0x3400;
+  const uint16_t spacing = mode_ == Mode::FM ? (spacingHz <= 50000 ? 5 : spacingHz <= 100000 ? 10 : 20)
+                                            : uint16_t(constrain(spacingHz / 1000, 1u, 10u));
+  if (!property(base, low.carrier) || !property(base + 1, high.carrier) ||
+      !property(base + 2, spacing) || !property(base + 3, mode_ == Mode::FM ? 3 : 5) ||
+      !property(base + 4, mode_ == Mode::FM ? 20 : 25)) return false;
+  // Clear any previous STC before beginning the new search. WRAP stays zero.
+  const uint8_t statusCmd[] = {uint8_t(mode_ == Mode::FM ? 0x22 : 0x42), 1}; uint8_t response[8];
+  if (!command(statusCmd, sizeof statusCmd, response, sizeof response)) return false;
+  const uint8_t bytes[] = {uint8_t(mode_ == Mode::FM ? 0x21 : 0x41), uint8_t(up ? 8 : 0), 0, 0, 0,
+                           uint8_t(mode_ != Mode::FM && lowerHz >= 1800000 ? 1 : 0)};
+  if (!command(bytes, mode_ == Mode::FM ? 2 : 6)) return false;
+  seekLowerHz_ = lowerHz; seekUpperHz_ = upperHz;
+  seeking_ = true; seekResult_ = SeekResult::Searching;
+  tuneStarted_ = lastPoll_ = millis();
+  return true;
+}
+bool Si473x::seekStatus(bool cancel, bool acknowledge) {
+  const uint8_t cmd[] = {uint8_t(mode_ == Mode::FM ? 0x22 : 0x42), uint8_t((cancel ? 2 : 0) | (acknowledge ? 1 : 0))};
+  uint8_t response[8];
+  if (!command(cmd, sizeof cmd, response, sizeof response)) return false;
+  const uint16_t actual = (response[2] << 8) | response[3];
+  const uint32_t hz = actual * (mode_ == Mode::FM ? 10000u : 1000u);
+  if (hz < seekLowerHz_ || hz > seekUpperHz_) return fail(Error::Frequency);
+  carrier_ = actual; requestedHz_ = confirmedHz_ = hz; carrierKnown_ = true;
+  signal_ = {response[4], response[5], bool(response[1] & 1), false, 0, 0, false, false, false, false, false};
+  if (cancel || (response[0] & 1)) {
+    seeking_ = false;
+    seekResult_ = cancel ? SeekResult::Cancelled : (response[1] & 0x80) ? SeekResult::Limit : SeekResult::Found;
+  }
+  return true;
+}
+bool Si473x::cancelSeek() {
+  return !seeking_ || seekStatus(true, true);
+}
+bool Si473x::pollSeek() {
+  if (millis() - lastPoll_ < 100) return true;
+  lastPoll_ = millis();
+  if (lastPoll_ - tuneStarted_ >= 30000) {
+    if (!cancelSeek()) return false;
+    seekResult_ = SeekResult::Timeout;
+    return true;
+  }
+  if (!seekStatus(false, false)) return false;
+  if (!seeking_) {
+    const uint8_t ack[] = {uint8_t(mode_ == Mode::FM ? 0x22 : 0x42), 1};
+    if (!command(ack, sizeof ack)) return false;
+  }
+  return true;
+}
 bool Si473x::poll() {
+  if (seeking_) return pollSeek();
   if (!tuning_ || millis() - lastPoll_ < 5) return error_ == Error::None;
   lastPoll_ = millis();
   if (lastPoll_ - tuneStarted_ > 3000) return fail(Error::Timeout);
@@ -163,15 +220,22 @@ bool Si473x::poll() {
   const uint16_t actual = (response[2] << 8) | response[3];
   if (actual != carrier_) return fail(Error::Frequency);
   confirmedHz_ = requestedHz_; tuning_ = false; carrierKnown_ = true;
-  signal_ = {response[4], response[5], bool(response[1] & 1), false};
+  signal_ = {response[4], response[5], bool(response[1] & 1), false, 0, 0, false, false, false, false, false};
   return true;
 }
 bool Si473x::readSignal() {
-  if (!configured_ || tuning_) return false;
+  if (!configured_ || tuning_ || seeking_) return false;
   const uint8_t cmd[] = {uint8_t(mode_ == Mode::FM ? 0x23 : 0x43), 0}; uint8_t response[8];
   if (!command(cmd, sizeof cmd, response, mode_ == Mode::FM ? 8 : 6)) return false;
-  signal_ = {response[4], response[5], bool(response[2] & 1),
-             mode_ == Mode::FM && ((response[3] & 0x7f) >= 50)};
+  signal_.rssi = response[4]; signal_.snr = response[5]; signal_.valid = response[2] & 1;
+  signal_.blend = mode_ == Mode::FM ? (response[3] & 0x7f) : 0;
+  signal_.stereo = mode_ == Mode::FM && signal_.blend > 0;
+  signal_.pilot = mode_ == Mode::FM && (response[3] & 0x80);
+  signal_.softMuted = response[2] & 8; signal_.afcRail = response[2] & 2;
+  signal_.qualityKnown = false;
+  const uint8_t agcCmd[] = {uint8_t(mode_ == Mode::FM ? 0x27 : 0x47)}; uint8_t agc[3];
+  if (!command(agcCmd, sizeof agcCmd, agc, sizeof agc)) return false;
+  signal_.agcEnabled = !(agc[1] & 1); signal_.gainIndex = agc[2]; signal_.qualityKnown = true;
   return true;
 }
 }

@@ -3,7 +3,12 @@
 #include "tuning.h"
 namespace drivers {
 enum class Error : uint8_t { None, NoDevice, Bus, Timeout, Command, Frequency, Patch };
-struct Signal { uint8_t rssi, snr; bool valid, stereo; };
+enum class SeekResult : uint8_t { None, Searching, Found, Limit, Cancelled, Timeout };
+struct Signal {
+  uint8_t rssi, snr; bool valid, stereo;
+  uint8_t blend, gainIndex;
+  bool pilot, softMuted, afcRail, agcEnabled, qualityKnown;
+};
 struct Revision { uint8_t part, major, minor, componentMajor, componentMinor, chip; uint16_t patch; };
 class Si473x {
 public:
@@ -12,6 +17,10 @@ public:
   bool begin();
   bool configure(Mode mode, uint8_t volume);
   bool tune(uint32_t frequencyHz);
+  bool seek(bool up, uint32_t lowerHz, uint32_t upperHz, uint32_t spacingHz);
+  bool cancelSeek();
+  bool seeking() const { return seeking_; }
+  SeekResult seekResult() const { return seekResult_; }
   bool poll(); // Nonblocking STC polling; confirmed frequency updated on completion.
   bool readSignal();
   bool setVolume(uint8_t volume);
@@ -24,6 +33,7 @@ public:
   bool configured() const { return configured_; }
   uint32_t frequencyHz() const { return confirmedHz_; }
   const Signal& signal() const { return signal_; }
+  uint32_t bandwidthHz() const { return mode_ == Mode::FM ? 0 : isSsb(mode_) ? 2200 : 3000; }
   const Revision& revision() const { return revision_; }
 private:
   bool read(uint8_t* response, uint8_t size);
@@ -33,13 +43,17 @@ private:
   bool powerUp(uint8_t function);
   bool loadSsb();
   bool getRevision();
+  bool pollSeek();
+  bool seekStatus(bool cancel, bool acknowledge);
   bool fail(Error error);
   TwoWire& bus_;
   uint8_t address_ = 0;
   Error error_ = Error::None;
   Mode mode_ = Mode::FM;
   bool powered_ = false, configured_ = false, tuning_ = false;
-  bool carrierKnown_ = false;
+  bool carrierKnown_ = false, seeking_ = false;
+  SeekResult seekResult_ = SeekResult::None;
+  uint32_t seekLowerHz_ = 0, seekUpperHz_ = 0;
   uint16_t carrier_ = 0;
   uint32_t requestedHz_ = 0, confirmedHz_ = 0, tuneStarted_ = 0, lastPoll_ = 0;
   Signal signal_{};
