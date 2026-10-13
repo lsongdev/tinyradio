@@ -148,7 +148,7 @@ void drawRuler(lgfx::LGFXBase& g) {
       // Keep frequency labels one major division away from band names. Labels
       // stay centered on their ticks; only values close to the edge are hidden.
       const int labelX = edge
-          ? tick.x + (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2)
+          ? tick.x + (i > 0 && ticks[i - 1].band != tick.band ? 6 : -6)
           : tick.x;
       const int labelWidth = g.textWidth(label);
       if (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6) {
