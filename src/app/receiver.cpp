@@ -72,10 +72,10 @@ void rememberSettings(uint32_t now) {
 }
 void report() {
   const auto& s = chip.signal();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] error=%s\n",
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
     static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, brightness, muted, settingsStored, savePending, static_cast<unsigned long>(settingsWrites),
-    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.errorText());
+    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawCircle(x + 6, 10, 3, color);

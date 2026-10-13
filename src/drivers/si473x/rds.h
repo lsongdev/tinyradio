@@ -9,9 +9,9 @@ public:
   const char* text() const { return published_; }
   const char* radioText() const { return rtPublished_; }
   void accept(uint16_t pi, uint16_t b, uint16_t d, uint8_t errors, uint16_t c = 0) {
-    if ((errors >> 6) > 1) return;
+    if ((errors >> 6) > 2) return;
     if (!piKnown_ || pi != pi_) { clear(); pi_ = pi; piKnown_ = true; }
-    if (((errors >> 4) & 3) > 1 || (errors & 3) > 1) return;
+    if (((errors >> 4) & 3) > 2 || (errors & 3) > 2) return;
     if ((b >> 12) == 2) { acceptText(b, d, c, errors); return; }
     if ((b >> 12) != 0) return;
     const uint8_t segment = b & 3;
@@ -33,7 +33,7 @@ private:
       memset(rtCandidate_, ' ', sizeof rtCandidate_);
       rtKnown_ = true; rtFlag_ = flag; rtVersionB_ = versionB;
     }
-    if (!versionB && ((errors >> 2) & 3) > 1) return;
+    if (!versionB && ((errors >> 2) & 3) > 2) return;
     const int segment = b & 15, width = versionB ? 2 : 4, capacity = versionB ? 32 : 64;
     const uint8_t bytes[] = {uint8_t(c >> 8), uint8_t(c), uint8_t(d >> 8), uint8_t(d)};
     for (int i = 0; i < width; ++i) {

@@ -3,7 +3,7 @@
 #include "patches/ssb.h"
 namespace drivers {
 bool Si473x::fail(Error error) {
-  rds_.clear(); error_ = error; configured_ = false; tuning_ = seeking_ = false; carrierKnown_ = false;
+  rds_.clear(); rdsStatus_ = {}; error_ = error; configured_ = false; tuning_ = seeking_ = false; carrierKnown_ = false;
   return false;
 }
 const char* Si473x::errorText() const {
@@ -12,7 +12,7 @@ const char* Si473x::errorText() const {
   return names[static_cast<uint8_t>(error_)];
 }
 bool Si473x::begin() {
-  rds_.clear(); error_ = Error::None; powered_ = configured_ = tuning_ = carrierKnown_ = false;
+  rds_.clear(); rdsStatus_ = {}; error_ = Error::None; powered_ = configured_ = tuning_ = carrierKnown_ = false;
   confirmedHz_ = 0; revision_ = {}; signal_ = {}; seeking_ = false; seekResult_ = SeekResult::None;
   for (uint8_t address : {uint8_t(0x11), uint8_t(0x63)}) {
     bus_.beginTransmission(address);
@@ -104,7 +104,7 @@ bool Si473x::loadSsb() {
 }
 bool Si473x::configure(Mode mode, uint8_t volume) {
   if (seeking_ && !cancelSeek()) return false;
-  rds_.clear();
+  rds_.clear(); rdsStatus_ = {};
   const bool sameEngine = configured_ && (mode == mode_ || (isSsb(mode) && isSsb(mode_)));
   error_ = Error::None;
   if (!sameEngine) {
@@ -119,7 +119,9 @@ bool Si473x::configure(Mode mode, uint8_t volume) {
     } else {
       if (!powerUp(mode == Mode::FM ? 0x10 : 0x11) || !getRevision()) return false;
       if (mode == Mode::FM) {
-        if (!property(0x1100, 1) || !property(0x1102, 0) || !property(0x1502, 0x5501)) return false; // 50us FM de-emphasis
+        if (!property(0x1100, 1) || !property(0x1102, 0)) return false; // 50us FM de-emphasis
+        // Enable RDS, with all corrected blocks (BLE 0..2) admitted to the FIFO.
+        if (!property(0x1500, 1) || !property(0x1501, 1) || !property(0x1502, 0xAA01)) return false;
       } else if (!property(0x3102, 2) || !property(0x3302, 0)) return false; // AM 3kHz, soft mute off
     }
   }
@@ -245,7 +247,7 @@ bool Si473x::setReception(const ReceptionSettings& settings) {
   return true;
 }
 bool Si473x::clearRds() {
-  rds_.clear();
+  rds_.clear(); rdsStatus_ = {};
   if (mode_ != Mode::FM || !configured_) return true;
   const uint8_t cmd[] = {0x24, 3}; // INTACK + MTFIFO; discard previous station data.
   return command(cmd, sizeof cmd);
@@ -254,14 +256,17 @@ bool Si473x::readRds() {
   if (!configured_ || mode_ != Mode::FM || tuning_ || seeking_) return true;
   uint8_t response[13]; const uint8_t peek[] = {0x24, 5}; // STATUSONLY + INTACK.
   if (!command(peek, sizeof peek, response, sizeof response)) return false;
-  if (!(response[2] & 1) || (response[1] & 2) || (response[2] & 4)) {
-    return clearRds(); // Sync loss or FIFO overrun: don't combine incomplete names.
-  }
-  const uint8_t count = response[3] < 4 ? response[3] : 4;
+  rdsStatus_.synchronized = response[2] & 1;
+  rdsStatus_.queued = response[3];
+  // GRPLOST reports discarded groups, not corrupt data in the surviving FIFO.
+  // Drain those groups instead of flushing them; block errors and PI validation
+  // in the decoder protect message assembly even after a synchronization gap.
+  if (response[2] & 4) ++rdsStatus_.overruns;
+  const uint8_t count = response[3] < 8 ? response[3] : 8;
   const uint8_t pop[] = {0x24, 1};
   for (uint8_t i = 0; i < count; ++i) {
     if (!command(pop, sizeof pop, response, sizeof response)) return false;
-    if (!(response[2] & 1) || (response[1] & 2)) return clearRds();
+    ++rdsStatus_.groups;
     rds_.accept(uint16_t(response[4] << 8 | response[5]), uint16_t(response[6] << 8 | response[7]),
                uint16_t(response[10] << 8 | response[11]), response[12], uint16_t(response[8] << 8 | response[9]));
   }
