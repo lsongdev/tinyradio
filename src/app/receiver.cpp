@@ -142,7 +142,7 @@ void drawRuler(lgfx::LGFXBase& g) {
       // scale unchanged.
       const int labelX = edge
           ? tick.x + (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2)
-          : (tick.band == 2 && tick.hz >= radio::bands[2].maxHz - 200000 ? tick.x - 10 : tick.x);
+      : (tick.band == 2 && tick.hz >= radio::bands[2].maxHz - 200000 ? tick.x - 22 : tick.x);
       const int labelWidth = g.textWidth(label);
       if (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6) {
         g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
