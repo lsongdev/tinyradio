@@ -1,0 +1,109 @@
+name: Firmware
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO
+        run: python -m pip install platformio==6.1.18
+      - name: Check core logic and capture tools
+        run: sh tools/test.sh
+      - name: Build ATS Mini firmware
+        run: pio run -e ats-mini
+      - name: Package firmware
+        run: python tools/package_firmware.py --output dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ats-mini-firmware-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: ats-mini-daily-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ats-mini-firmware-${{ github.sha }}
+          path: dist
+      - name: Publish or update today's prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TZ: Asia/Shanghai
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_sha=$(gh api "repos/$GH_REPO/git/ref/heads/master" --jq '.object.sha')
+          if [[ "$BUILD_SHA" != "$head_sha" ]]; then
+            echo "Skip superseded commit $BUILD_SHA (master is $head_sha)"
+            exit 0
+          fi
+          day=$(date +%F)
+          tag="daily-$day"
+          title="ATS Mini daily build $day"
+          cat > notes.md <<EOF_NOTES
+          Firmware for the Sunnygold SI4732 Mini Radio (ESP32-S3, PCB 1.2 reference).
+
+          - Commit: [$BUILD_SHA](https://github.com/$GH_REPO/commit/$BUILD_SHA)
+          - Build: [GitHub Actions]($RUN_URL)
+          - Day: $day (Asia/Shanghai)
+
+          Successful master builds update this prerelease on the same day.
+          Download ats-mini-firmware.bin for an application update (preserves compatible settings),
+          or ats-mini-install.zip for all flashing files, instructions, source snapshot, and notices.
+          ats-mini-full.bin is a complete 16 MiB image flashed at 0x0; it resets saved settings/data.
+          Check ats-mini-sha256sums.txt for file hashes and ats-mini-build-info.json for versions.
+          Original project code is MIT; bundled third-party assets and SSB patch retain separate terms.
+          EOF_NOTES
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$tag" \
+              -f sha="$BUILD_SHA" -F force=true > /dev/null
+          else
+            gh api --method POST "repos/$GH_REPO/git/refs" \
+              -f ref="refs/tags/$tag" -f sha="$BUILD_SHA" > /dev/null
+          fi
+          release_id=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\") | .id")
+          if [[ -n "$release_id" ]]; then
+            gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" --title "$title" --notes-file notes.md --prerelease
+          else
+            gh release create "$tag" dist/* --verify-tag --title "$title" \
+              --notes-file notes.md --prerelease
+          fi

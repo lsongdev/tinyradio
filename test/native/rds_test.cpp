@@ -29,6 +29,8 @@ int main() {
   r.clear();
   ps(r, 0x1234, "BAD FM  ", 0x30); ps(r, 0x1234, "BAD FM  ", 3); assert(!r.text()[0]);
   ps(r, 0x1234, "GOOD FM ", 0x51); ps(r, 0x1234, "GOOD FM ", 0x51); assert(!strcmp(r.text(), "GOOD FM"));
+  r.clear(); ps(r, 0x1234, "CORRECT ", 0xaa); ps(r, 0x1234, "CORRECT ", 0xaa);
+  assert(!strcmp(r.text(), "CORRECT")); // BLE=2 is corrected, not uncorrectable.
   r.clear(); r.accept(0x1234, 0, 0x4142, 0); r.accept(0x1234, 1, 0x4344, 0);
   assert(!r.text()[0]); r.clear(); ps(r, 0x1234, "RESTORED"); assert(!r.text()[0]);
   ps(r, 0x1234, "RESTORED"); assert(!strcmp(r.text(), "RESTORED"));

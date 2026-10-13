@@ -1,33 +1,95 @@
-# ATS Mini User Manual
+# User Manual
 
-## Receiver overview
+## Getting started
 
-The ATS Mini uses an ESP32-S3 and SI4732 receiver. Available bands and modes are:
+Switch on the receiver. It restores saved settings and starts with Frequency focused, ready for manual tuning. Rotate the encoder to tune, short-press to select another control, and rotate to change that control.
 
-| Band | Frequency range | Modes |
+Prebuilt firmware is available in [daily prereleases](https://github.com/lsongdev/ats-mini/releases). Use the application image for updates that preserve settings; the complete 16 MiB image resets settings/data. Flashing instructions are included in the install ZIP. For source builds, see the [README](../README.md#quick-start). For board-specific information, see [Hardware facts](hardware.md).
+
+## Bands and modes
+
+| Band | Frequency range | Available modes |
 | --- | --- | --- |
 | LW | 153–279 kHz | AM, LSB, USB |
 | MW | 520–1710 kHz | AM, LSB, USB |
 | SW | 2.3–26.1 MHz | AM, LSB, USB |
 | VHF | 64–108 MHz | FM |
-| AIR | 118–137 MHz | Unavailable on this hardware |
+| AIR | 118–137 MHz, reference only | Unavailable |
 
-AIR is shown for reference but cannot be selected. The SI4732 SSB patch enables LSB/USB reception on LW, MW, and SW; it does not add VHF air-band reception.
+Unavailable bands and modes are gray and skipped during selection. The SSB patch enables LSB/USB; it does not enable VHF aviation reception.
+
+Manual tuning crosses from one band to the next at its endpoint. It stops at the overall limits of 153 kHz and 108 MHz, without wrapping. Directly selecting a band restores its remembered frequency, mode, and step.
 
 ## Encoder controls
 
-- **Rotate:** Change the focused item.
-- **Short press:** Move focus through Band → Frequency → Mode → BW → AGC → SM → Step → Volume → Brightness, then back to Band.
-- **Long-press Frequency:** Toggle seek mode. The frequency display changes color while seeking.
-- **Rotate while seeking:** Search forward or backward in the current band.
-- **Short press while seeking:** Stop at the current receiver frequency and return to manual tuning, keeping Frequency focused.
-- **Long-press Volume:** Toggle mute. The selected volume level is retained.
+| Gesture | Result |
+| --- | --- |
+| Rotate | Adjust the focused value |
+| Short-press | Cycle focus through Band → Frequency → Mode → BW → AGC → SM → Step → Volume → Brightness |
+| Long-press Frequency | Toggle seek mode in AM/FM |
+| Rotate in seek mode | Search up/down within the current band |
+| Short-press in seek mode | Cancel search at the current frequency, return to manual tuning, and keep Frequency focused |
+| Long-press Volume | Toggle mute while retaining the chosen volume |
+| Short-press on receiver error | Reset the radio chip and retry |
 
-At the Frequency focus, ordinary rotation continuously tunes by the selected step. Crossing a band edge continues at the adjacent available band, carrying any remaining encoder movement forward. Tuning stops at the overall limits of 153 kHz and 108 MHz; the scale does not wrap around. Each band remembers its own frequency, mode, and step.
+A long press lasts approximately 650 ms. Releasing it does not generate a second short press. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow.
 
-## Tuning steps
+## Reading the screen
 
-The Step focus cycles through the options for the current band and mode. Shortwave has coarse steps of **10 kHz** and **100 kHz** in both AM and SSB, in addition to the finer options.
+The top left lists bands. The top right shows brightness, volume, and battery estimate. The main area shows frequency and unit, or RDS text. Modes and reception controls occupy the next row; signal indicators and Step sit below them. The bottom ruler's red pointer always carries the current frequency.
+
+At band boundaries, the ruler reserves space for names such as SW and VHF. Blank positions between frequency endpoints and band-name markers are visual spacing, not frequencies you can tune.
+
+### Colors and volume
+
+- **Yellow:** focused value controlled by the encoder.
+- **Cyan:** active option; a cyan speaker indicates stereo blend.
+- **Gray:** unavailable option; a light-gray speaker indicates mono, and a dark-gray speaker means quality status is not yet known.
+- **Magenta:** seek mode and search direction.
+- **Orange SM text:** soft mute is currently attenuating audio; its border retains focus/selection color.
+- **Red crossed speaker:** muted.
+
+The speaker's wave lines represent volume: none at zero, one through 33%, two through 67%, and three above 67%. When Volume is focused, its percentage becomes yellow while the icon keeps its mono/stereo color.
+
+### Signal indicators
+
+| Indicator | Meaning |
+| --- | --- |
+| Signal bars / RSSI | Received signal strength in dBµV |
+| SN | Signal-to-noise ratio in dB |
+| VALID / INVALID | Whether the chip considers the channel valid for its seek criteria |
+| TUNING / SEEK | A tune or search is in progress |
+| AFC OK / AFC! | Frequency correction is within range / has reached its limit |
+| RF | Current chip gain index, not a value in dB |
+| P0 / P1 | FM stereo pilot absent / detected |
+| `--` | A stable measurement is not available |
+
+VALID does not guarantee an intelligible station or successful RDS decoding. SSB has AFC disabled by patch configuration.
+
+## RDS station names and text
+
+**PS (Programme Service)** is the station name, such as `LOVE959`. **RT (RadioText)** is extra broadcast text, such as programme details, a song title, an advertisement, or a contact number.
+
+With only PS or RT available, the main area uses large text, approximately 42 pixels high. When both are available, it shows PS above RT in two approximately 21-pixel rows. Long strings scroll independently, pausing at their beginning and end. The display grows the remaining text again when the other message is absent, reusing the same space.
+
+RT has no broadcast-defined display duration. When the station starts a new message by changing its A/B flag, this firmware clears the old RT and waits for two matching complete new messages. Consequently, RT can disappear temporarily and the PS name can become larger. A reception gap alone does not clear confirmed RT; a confirmed empty message does. Updates depend on the broadcaster and reception quality, not on a timer that alternates PS and RT.
+
+The screen includes a Chinese font, but this version's RDS decoder only handles printable ASCII. Enhanced UTF-8 RadioText and broadcaster-specific Chinese encodings are not supported.
+
+## Reception controls
+
+| Control | What you adjust |
+| --- | --- |
+| BW | Channel/audio bandwidth: FM AUTO or 40–110 kHz; AM 1–6 kHz; SSB 0.5–4 kHz |
+| AGC / ATT | Automatic gain control, or manual attenuation index |
+| SM | Soft-mute attenuation from OFF to 31 dB |
+| Step | Manual tuning increment |
+| Volume | Audio level, 0–100% |
+| Brightness | Display backlight level |
+
+SM is soft mute, not a squelch threshold. BW, AGC, and SM are remembered separately for each demodulation mode. Available bandwidth values are listed in [Design](design.md#reception-settings).
+
+### Tuning steps
 
 | Band / mode | Available steps |
 | --- | --- |
@@ -37,22 +99,38 @@ The Step focus cycles through the options for the current band and mode. Shortwa
 | SW SSB | 10, 50, 100, 500, 1000 Hz; 10, 100 kHz |
 | VHF FM | 10, 50, 100, 200 kHz |
 
-Steps control manual tuning increments. They do not promise a matching channel plan or improve the receiver's absolute frequency accuracy.
-
-## Radio modes and reception controls
-
-Choose AM, LSB, or USB on LW/MW/SW, and FM on VHF. Band and mode choices that are unavailable are dimmed in the interface. Long-press Frequency to seek stations in AM or FM; seek is not available in SSB and stays within the current band.
-
-The BW, AGC, and SM controls adjust channel bandwidth, automatic gain control/attenuation, and soft-mute attenuation. SM is a soft-mute setting, not a squelch threshold. For the available values and technical behavior, see [Radio capabilities and implementation notes](radio.md).
-
-In FM, the main display can show confirmed RDS station name (PS) or radio text (RT) when received. RDS uses bold efontCN within a 304 × 46 pixel area. When both PS and RT are available, the station name appears above the radio text in two rows at approximately 21 pixels high, each scrolling independently. With only one message, it uses approximately 42 pixels high. Each long message scrolls to its end with pauses before repeating. The status area shows signal strength, SNR, channel validity, and compact receiver status. The volume icon is light gray for mono, cyan for stereo, dark gray while reception status is unknown, and red with a cross when muted. Its sound-wave lines show the volume level: none at zero, one at 1–33%, two at 34–67%, and three above 67%. When Volume is focused, the percentage turns yellow while the icon retains its reception color.
+A fine step does not improve absolute frequency accuracy or enforce a broadcast channel grid.
 
 ## Saved settings
 
-The firmware stores the selected band, each available band's frequency/mode/step, volume, brightness, mute state, and per-mode BW/AGC/SM settings in ESP32 non-volatile storage (NVS). Changes are saved after two seconds without adjustments and restored after a restart. Focus starts on Frequency at startup, and seek always starts in manual tuning mode.
+After two seconds without adjustments, once tuning/search has completed, the receiver saves current band, each band's frequency/mode/step, BW/AGC/SM, volume, brightness, and mute to NVS. Startup restores them; focus starts on Frequency and seek starts off.
 
-Normal firmware uploads preserve NVS. If power is removed before the two-second save delay completes, the latest change may not be retained.
+Normal firmware updates preserve NVS. If you switch off within the two-second save delay, the latest adjustment may not be retained. Invalid or incompatible saved data falls back to defaults.
 
-## Battery indicator
+## Battery estimate
 
-The battery percentage is not reliable while the receiver is connected to USB and may display `--%`. Refer to [hardware documentation](hardware.md) for the board's ADC and voltage-calibration notes.
+The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered and may show `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware.md#battery-indication) for calibration and measurement limits.
+
+## Screenshots
+
+Connect USB, close the serial monitor, then use the host tool:
+
+```sh
+python3 -m pip install -r tools/requirements.txt
+python3 tools/capture_screen.py --port /dev/ttyACM0 --output screenshot.png
+```
+
+Replace the port with your receiver's port from `pio device list`. The image includes the whole 320 × 170 screen. Capture does not change settings; the UI briefly pauses while sending it. Add `--wait 5` to wait before taking the snapshot.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| No RDS or temporarily blank RT | Extend/reorient the antenna and allow time for confirmation. RT may be changing; audible FM does not guarantee RDS reception. |
+| Restored frequency produces noise | Current firmware waits for crystal stabilization before its first tune. Check the station/antenna and update from an older version. Report the frequency, mode, and serial `?` output if it persists. |
+| SI4732 error on screen | Short-press to retry. Record the error and serial status; confirm the supported board wiring. |
+| Screenshot times out | Flash the current firmware, select the correct USB port, and close other serial monitors. |
+| Screenshot reports no framebuffer | Restart the receiver; capture requires successful framebuffer allocation. |
+| Display orientation or colors differ | Board/display variants exist. Verify the controller and configuration against [Hardware facts](hardware.md). |
+
+For bug reports, include board markings if known, firmware commit, frequency/mode, reproduction steps, a screenshot, and serial status. Native and device validation procedures are in [Design](design.md#validation).

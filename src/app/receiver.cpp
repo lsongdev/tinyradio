@@ -35,6 +35,7 @@ bool storageReady = false, settingsStored = false, savePending = false;
 uint32_t lastSettingsChange = 0, lastSaveAttempt = 0, settingsWrites = 0;
 auto settings() -> drivers::ReceptionSettings& { return reception[static_cast<unsigned>(model.mode())]; }
 bool muted = false, dirty = true, lcd = false, buffered = false, failed = false;
+bool screenshotRequested = false;
 radio::SavedSettings savedSettings() {
   radio::SavedSettings saved; saved.tuning = model.state();
   saved.volume = volume; saved.brightness = brightness; saved.muted = muted;
@@ -379,6 +380,26 @@ void turn(int delta) {
   dirty = true;
 }
 // Single-character diagnostics for repeatable real-device checks.
+void captureScreen() {
+  if (!lcd || !buffered) { Serial.println("SCREENSHOT_ERROR framebuffer unavailable"); return; }
+  constexpr int width = 320, height = 170;
+  // Export the last presented frame, not a newly rendered approximation.
+  Serial.printf("\nATS_SCREENSHOT RGB888 %d %d %d\n", width, height, width * height * 3);
+  lgfx::bgr888_t pixels[width]; uint8_t row[width * 3];
+  for (int y = 0; y < height; ++y) {
+    frame.readRectRGB(0, y, width, 1, pixels);
+    for (int x = 0; x < width; ++x) {
+      row[x * 3] = pixels[x].r; row[x * 3 + 1] = pixels[x].g; row[x * 3 + 2] = pixels[x].b;
+    }
+    size_t sent = 0; const uint32_t started = millis();
+    while (sent < sizeof row) {
+      sent += Serial.write(row + sent, sizeof row - sent);
+      if (millis() - started > 2000) return;
+      if (sent < sizeof row) delay(1);
+    }
+  }
+  Serial.print("\nATS_SCREENSHOT_END\n");
+}
 void serialInput() {
   for (int count = 0; count < 16 && Serial.available(); ++count) {
     const char c = Serial.read();
@@ -397,6 +418,7 @@ void serialInput() {
     else if (c == '>') turn(1);
     else if (c == '<') turn(-1);
     else if (c == '?') report();
+    else if (c == 'S') screenshotRequested = true;
     else if (c == 'r') retry();
   }
 }
@@ -483,6 +505,9 @@ void updateReceiver() {
   if (chip.rdsText()[0] && now - lastDraw >= 50) dirty = true;
   rememberSettings(now);
   if (dirty && now - lastDraw >= 50) { dirty = false; lastDraw = now; if (lcd) draw(); }
+  if (screenshotRequested && (lastDraw || !lcd || !buffered)) {
+    screenshotRequested = false; captureScreen();
+  }
   delay(1);
 }
 }

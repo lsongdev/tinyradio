@@ -19,15 +19,17 @@ static bool settle(drivers::Si473x& chip) {
 int main() {
   TwoWire bus; drivers::Si473x chip(bus);
   assert(chip.begin() && chip.configure(drivers::Mode::FM, 18));
-  assert(has(bus, {0x12,0,0x15,2,0x55,1}));
+  assert(has(bus, {0x12,0,0x15,2,0xaa,1}));
+  assert(has(bus, {0x12,0,0x15,0,0,1}) && has(bus, {0x12,0,0x15,1,0,1}));
   assert(chip.tune(100000000) && settle(chip));
   assert(chip.setReception({1,26,31})); assert(chip.bandwidthHz() == 40000);
   assert(has(bus, {0x12,0,0x11,2,0,4})); assert(has(bus, {0x28,1,26}));
   assert(has(bus, {0x12,0,0x13,2,0,31}));
-  name(bus, "RADIO FM"); assert(chip.readRds() && bus.fifo.size() == 4 && !chip.rdsPs()[0]);
-  assert(chip.readRds() && bus.fifo.empty() && !strcmp(chip.rdsPs(), "RADIO FM"));
+  name(bus, "RADIO FM"); assert(chip.readRds() && bus.fifo.empty() && !strcmp(chip.rdsPs(), "RADIO FM"));
+  assert(chip.rdsStatus().groups == 8 && chip.rdsStatus().synchronized);
   assert(chip.readRds() && !strcmp(chip.rdsPs(), "RADIO FM")); // Empty FIFO must not inject a phantom group.
-  bus.synced = false; assert(chip.readRds() && !chip.rdsPs()[0]); bus.synced = true;
+  bus.synced = false; assert(chip.readRds() && !strcmp(chip.rdsPs(), "RADIO FM"));
+  assert(!chip.rdsStatus().synchronized); bus.synced = true;
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
   name(bus, "OLD NAME"); assert(chip.tune(100100000) && !chip.rdsPs()[0] && bus.fifo.empty()); assert(settle(chip));
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
