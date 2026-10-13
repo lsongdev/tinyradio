@@ -30,6 +30,9 @@ public:
   const RdsStatus& rdsStatus() const { return rdsStatus_; }
   const char* rdsPs() const { return rds_.text(); }
   const char* rdsText() const { return rds_.radioText(); }
+  const char* rdsEnhancedText() const { return rds_.enhancedText(); }
+  int rdsEnhancedGroup() const { return rds_.enhancedGroup(); }
+  uint16_t rdsEnhancedFlags() const { return rds_.enhancedFlags(); }
   bool setReception(const ReceptionSettings& settings);
   bool setVolume(uint8_t volume);
   bool setMuted(bool muted);

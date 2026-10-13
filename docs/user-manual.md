@@ -74,7 +74,9 @@ With only PS or RT available, the main area uses large text, approximately 42 pi
 
 RT has no broadcast-defined display duration. When the station starts a new message by changing its A/B flag, this firmware clears the old RT and waits for two matching complete new messages. Consequently, RT can disappear temporarily and the PS name can become larger. A reception gap alone does not clear confirmed RT; a confirmed empty message does. Updates depend on the broadcaster and reception quality, not on a timer that alternates PS and RT.
 
-The screen includes a Chinese font, but this version's RDS decoder only handles printable ASCII. Enhanced UTF-8 RadioText and broadcaster-specific Chinese encodings are not supported.
+**eRT (Enhanced RadioText)** is a separate broadcast service that can coexist with ordinary RT. This firmware supports up to 128 bytes of left-to-right UTF-8 eRT, including Chinese supported by the screen font. Confirmed nonempty eRT replaces RT in the same scrolling row; ordinary RT remains the fallback. PS stays in its own row.
+
+eRT has no A/B flag. A changed received segment clears the previous eRT; two matching complete transmissions are needed to show the replacement. Missing segments delay confirmation. Ordinary PS/RT still use printable ASCII; legacy UCS-2 eRT, right-to-left layout, and broadcaster-specific Chinese encodings are not supported.
 
 ## Reception controls
 

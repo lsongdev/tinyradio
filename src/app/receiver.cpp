@@ -71,12 +71,13 @@ void rememberSettings(uint32_t now) {
     lastSaveAttempt = 0; ++settingsWrites; Serial.println("Settings: saved");
   } else Serial.println("Settings: save failed; retry in 10s");
 }
+const char* radioMessage() { return chip.rdsEnhancedText()[0] ? chip.rdsEnhancedText() : chip.rdsText(); }
 void report() {
   const auto& s = chip.signal();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
     static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, brightness, muted, settingsStored, savePending, static_cast<unsigned long>(settingsWrites),
-    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
+    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsEnhancedText(), chip.rdsEnhancedGroup(), chip.rdsEnhancedFlags(), chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawCircle(x + 6, 10, 3, color);
@@ -209,10 +210,11 @@ void draw() {
   g.setTextColor(failed ? TFT_RED : seekMode ? TFT_MAGENTA : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
   const bool rdsVisible = !failed && !pending && !seekMode;
   const bool showPs = rdsVisible && chip.rdsPs()[0];
-  const bool showRt = rdsVisible && chip.rdsText()[0];
+  const char* message = radioMessage();
+  const bool showRt = rdsVisible && message[0];
   const bool splitRds = showPs && showRt;
   constexpr int textTop = 22, textHeight = 46, regionWidth = 304;
-  struct ScrollState { char text[65]{}; int width = 0; uint32_t started = 0; };
+  struct ScrollState { char text[129]{}; int width = 0; uint32_t started = 0; };
   static ScrollState scroll[2];
   const uint32_t textNow = millis();
   const auto drawText = [&](const char* text, int top, int height, int slot) {
@@ -237,8 +239,8 @@ void draw() {
     g.setFont(&fonts::efontCN_24_b); g.setTextSize(1);
     const int rowHeight = splitRds ? textHeight / 2 : textHeight;
     g.setTextSize(float(rowHeight - (splitRds ? 2 : 4)) / g.fontHeight());
-    drawText(showPs ? chip.rdsPs() : chip.rdsText(), textTop, rowHeight, 0);
-    if (splitRds) drawText(chip.rdsText(), textTop + rowHeight, rowHeight, 1);
+    drawText(showPs ? chip.rdsPs() : message, textTop, rowHeight, 0);
+    if (splitRds) drawText(message, textTop + rowHeight, rowHeight, 1);
   } else {
     g.setFont(&fonts::Font0); g.setTextSize(4);
     const int width = g.textWidth(frequency.number);
@@ -504,7 +506,7 @@ void updateReceiver() {
     }
   }
   if (now - lastBattery >= 1000) { lastBattery = now; supply = battery.read(); dirty = true; }
-  if (chip.rdsText()[0] && now - lastDraw >= 50) dirty = true;
+  if (radioMessage()[0] && now - lastDraw >= 50) dirty = true;
   rememberSettings(now);
   if (dirty && now - lastDraw >= 50) { dirty = false; lastDraw = now; if (lcd) draw(); }
   if (screenshotRequested && (lastDraw || !lcd || !buffered)) {

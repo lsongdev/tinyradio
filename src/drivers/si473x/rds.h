@@ -1,17 +1,31 @@
 #pragma once
 #include <stdint.h>
 #include <string.h>
+#include "enhanced_radiotext.h"
 namespace drivers {
-// Decode PS (0A/0B) and RadioText (2A/2B), confirming two identical messages.
+// Decode PS (0A/0B), RT (2A/2B), and announced eRT, confirming repeated messages.
 class RdsDecoder {
 public:
   void clear() { *this = RdsDecoder(); }
   const char* text() const { return published_; }
   const char* radioText() const { return rtPublished_; }
+  const char* enhancedText() const { return enhanced_.text(); }
+  int enhancedGroup() const { return enhanced_.group(); }
+  uint16_t enhancedFlags() const { return enhanced_.flags(); }
   void accept(uint16_t pi, uint16_t b, uint16_t d, uint8_t errors, uint16_t c = 0) {
     if ((errors >> 6) > 2) return;
     if (!piKnown_ || pi != pi_) { clear(); pi_ = pi; piKnown_ = true; }
-    if (((errors >> 4) & 3) > 2 || (errors & 3) > 2) return;
+    if (((errors >> 4) & 3) > 2) return;
+    const uint8_t group = (b >> 11) & 31;
+    if (group == 6) {
+      if (((errors >> 2) & 3) <= 2 && (errors & 3) <= 2) enhanced_.announce(b & 31, c, d);
+      return;
+    }
+    if (enhanced_.matches(group)) {
+      if (((errors >> 2) & 3) <= 2 && (errors & 3) <= 2) enhanced_.accept(b & 31, c, d);
+      return;
+    }
+    if ((errors & 3) > 2) return;
     if ((b >> 12) == 2) { acceptText(b, d, c, errors); return; }
     if ((b >> 12) != 0) return;
     const uint8_t segment = b & 3;
@@ -26,6 +40,7 @@ public:
     memcpy(previous_, candidate_, 8); previousKnown_ = true; mask_ = 0;
   }
 private:
+  EnhancedRadioText enhanced_;
   void acceptText(uint16_t b, uint16_t d, uint16_t c, uint8_t errors) {
     const bool versionB = b & 0x800, flag = b & 0x10;
     if (!rtKnown_ || flag != rtFlag_ || versionB != rtVersionB_) {

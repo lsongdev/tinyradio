@@ -65,7 +65,13 @@ PS and RT are published after two matching complete messages. RT's A/B flag or 2
 
 The display reuses space: a single PS or RT uses bold `efontCN_24_b` scaled to approximately 42 pixels high; when both exist, it uses two approximately 21-pixel rows. Each row has its own scrolling state. A long string pauses 1.2 seconds at the start, advances one pixel per 35 ms, pauses 1.2 seconds at the end, and repeats. Confirmed content changes restart that row's scroll. There is no timed alternation between PS and RT.
 
-The font can draw Chinese, but the current RDS decoder handles printable ASCII only; other bytes become `?`. UTF-8 eRT and broadcaster-specific Chinese encodings are not implemented. The [RDS Forum glossary](https://www.rds.org.uk/pages/glossary-of-terms.html) distinguishes ordinary RT from enhanced RT.
+Ordinary PS/RT decode printable ASCII; other bytes become `?`. Enhanced RadioText is an independent ODA service with AID `0x6552`. A valid 3A announcement assigns a five-bit carrier group code and flags: bit 0 selects UTF-8 instead of legacy UCS-2; bit 1 selects right-to-left layout. The implementation accepts allocatable A groups 5A–13A and supports UTF-8 left-to-right text. Unsupported encoding/layout leaves ordinary RT available. Reassignment, changed announcement flags, tuning, and PI changes reset eRT state.
+
+Each carrier group contributes four raw bytes from blocks C/D at segment index B[4:0]. Segments 0–31 form at most 128 bytes; `0x0D` ends a shorter message. Assembly starts at segment zero and requires consecutive segments. Identical retransmitted segments are harmless; a gap or conflicting duplicate discards the partial cycle and waits for another segment zero. UTF-8 validation occurs after assembly, so multibyte characters may cross segment boundaries. Overlong sequences, surrogates, invalid continuations, truncated characters, and out-of-range code points are rejected. Display control bytes are rejected too.
+
+eRT has no ordinary RT A/B flag. A changed valid segment overlapping the previous message clears published eRT, and two matching complete cycles confirm replacement text. Empty confirmed eRT falls back to RT. Already confirmed text has no reception timeout. Both decoders remain independent; display policy chooses nonempty confirmed eRT before ordinary RT. The scrolling buffer holds 128 bytes plus a terminator. Serial `?` reports separate `rt`, `ert`, `ertgroup` (five-bit group code, or -1 when unannounced), and `ertflags` fields.
+
+This uses the SI4732's ordinary RDS group FIFO; additional RDS2 subcarriers, UCS-2, right-to-left shaping, eRT+ tagging, and broadcaster-specific Chinese encodings are outside this implementation. Protocol references: [RDS Forum glossary](https://www.rds.org.uk/pages/glossary-of-terms.html), [NRSC ODA AID registry](https://www.nrscstandards.org/committees/dsm/archive/rds-oda-aids.pdf), and the [redsea receiver's eRT field parsing](https://github.com/windytan/redsea/blob/master/src/station.cc).
 
 ### Reception settings
 
@@ -114,7 +120,7 @@ Build and flash commands are in the [README](../README.md#quick-start). Run nati
 sh tools/test.sh
 ```
 
-These cover band/mode constraints, tuning boundaries/BFO, corrected RDS blocks and assembly, simulated command/FIFO behavior, persistence validation, and screenshot framing/PNG encoding. Simulated tests do not establish RF sensitivity or audio quality.
+These cover band/mode constraints, tuning boundaries/BFO, corrected RDS blocks, PS/RT/eRT assembly, UTF-8 boundaries and malformed input, simulated command/FIFO behavior, persistence validation, and screenshot framing/PNG encoding. Simulated tests do not establish RF sensitivity or audio quality.
 
 Device smoke scripts in `test/*_smoke.py` exercise tuning, seek, reception controls, and persistence. They change settings; inspect each script before running. Tests originally written for default settings may need that configuration; rebooting now preserves settings. Do not use them merely to obtain screenshots.
 
