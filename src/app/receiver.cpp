@@ -23,7 +23,7 @@ hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
 enum class Field { Band, Frequency, Mode, Bandwidth, Gain, SoftMute, Step, Volume, Brightness, Count };
-Field field = Field::Band;
+Field field = Field::Frequency;
 int volume = 18, appliedVolume = -1;
 int brightness = 128;
 drivers::ReceptionSettings reception[] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
