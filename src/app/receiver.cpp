@@ -141,7 +141,8 @@ void drawRuler(lgfx::LGFXBase& g) {
     if (!tick.valid) continue;
     const bool major = tick.name || tick.endpoint || (tick.hz && (tick.hz / tick.step) % 5 == 0);
     const bool adjacent = tick.band != model.bandIndex();
-    g.drawFastVLine(tick.x, 140, major ? 12 : 6, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
+    // Zero-frequency entries provide display spacing and names, not tunable ticks.
+    if (tick.hz) g.drawFastVLine(tick.x, 140, major ? 12 : 6, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
     if (!major) continue;
     char label[20];
     if (tick.name) snprintf(label, sizeof label, "%s", tick.name);
