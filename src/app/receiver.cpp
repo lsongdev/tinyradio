@@ -204,35 +204,48 @@ void draw() {
   const auto frequency = radio::formatFrequency(hz);
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
   g.setTextColor(failed ? TFT_RED : seekMode ? TFT_MAGENTA : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
-  const bool showPs = !failed && !pending && !seekMode && chip.rdsPs()[0];
+  const bool rdsVisible = !failed && !pending && !seekMode;
+  const bool showPs = rdsVisible && chip.rdsPs()[0];
+  const bool showRt = rdsVisible && chip.rdsText()[0];
+  const bool splitRds = showPs && showRt;
   constexpr int textTop = 22, textHeight = 46, regionWidth = 304;
-  g.setFont(&fonts::efontCN_24_b); g.setTextSize(1);
-  const float rdsScale = float(textHeight - 4) / g.fontHeight();
-  g.setTextSize(rdsScale);
-  const int rtWidth = g.textWidth(chip.rdsText());
-  const uint32_t rtDuration = max(8000u, uint32_t(max(0, rtWidth - regionWidth)) * 35u + 2400u);
-  const bool showRt = !failed && !pending && !seekMode && chip.rdsText()[0] &&
-                      (!showPs || millis() % (5000u + rtDuration) >= 5000u);
-  const char* mainText = showRt ? chip.rdsText() : showPs ? chip.rdsPs() : frequency.number;
-  if (showPs || showRt) g.setFont(&fonts::efontCN_24_b); else g.setFont(&fonts::Font0);
-  g.setTextSize(showPs || showRt ? rdsScale : 4);
-  g.setTextDatum(lgfx::textdatum_t::middle_left);
-  const int textWidth = g.textWidth(mainText);
-  static char previousText[65]{}; static uint32_t scrollStarted = 0;
-  if (strcmp(previousText, mainText)) {
-    snprintf(previousText, sizeof previousText, "%s", mainText); scrollStarted = millis();
+  struct ScrollState { char text[65]{}; int width = 0; uint32_t started = 0; };
+  static ScrollState scroll[2];
+  const uint32_t textNow = millis();
+  const auto drawText = [&](const char* text, int top, int height, int slot) {
+    auto& state = scroll[slot];
+    const int width = g.textWidth(text);
+    if (strcmp(state.text, text) || state.width != width) {
+      snprintf(state.text, sizeof state.text, "%s", text);
+      state.width = width; state.started = textNow;
+    }
+    int offset = 0;
+    if (width > regionWidth) {
+      const uint32_t travel = (width - regionWidth) * 35u;
+      const uint32_t phase = (textNow - state.started) % (travel + 2400);
+      offset = phase < 1200 ? 0 : phase < travel + 1200 ? (phase - 1200) / 35 : width - regionWidth;
+    }
+    g.setClipRect(8, top, regionWidth, height);
+    g.setTextDatum(lgfx::textdatum_t::middle_left);
+    g.drawString(text, 8 - offset, top + height / 2);
+    g.clearClipRect();
+  };
+  if (showPs || showRt) {
+    g.setFont(&fonts::efontCN_24_b); g.setTextSize(1);
+    const int rowHeight = splitRds ? textHeight / 2 : textHeight;
+    g.setTextSize(float(rowHeight - (splitRds ? 2 : 4)) / g.fontHeight());
+    drawText(showPs ? chip.rdsPs() : chip.rdsText(), textTop, rowHeight, 0);
+    if (splitRds) drawText(chip.rdsText(), textTop + rowHeight, rowHeight, 1);
+  } else {
+    g.setFont(&fonts::Font0); g.setTextSize(4);
+    const int width = g.textWidth(frequency.number);
+    drawText(frequency.number, textTop, textHeight, 0);
+    g.setTextSize(1); g.setClipRect(8, textTop, regionWidth, textHeight);
+    g.drawString(frequency.unit, 8 + width + 3, 51);
+    g.clearClipRect();
   }
-  int offset = 0;
-  if (textWidth > regionWidth) {
-    const uint32_t travel = (textWidth - regionWidth) * 35u;
-    const uint32_t phase = (millis() - scrollStarted) % (travel + 2400);
-    offset = phase < 1200 ? 0 : phase < travel + 1200 ? (phase - 1200) / 35 : textWidth - regionWidth;
-  }
-  g.setClipRect(8, textTop, regionWidth, textHeight);
-  g.drawString(mainText, 8 - offset, textTop + textHeight / 2);
+  if (!splitRds) scroll[1] = {};
   g.setFont(&fonts::Font0); g.setTextSize(1);
-  if (!showPs && !showRt) g.drawString(frequency.unit, 8 + textWidth + 3 - offset, 51);
-  g.clearClipRect();
   if (seekMode && (chip.seeking() || pendingSeek)) {
     const int direction = pendingSeek ? pendingSeek : seekDirection;
     if (direction > 0) g.fillTriangle(303, 39, 303, 53, 312, 46, TFT_MAGENTA);
