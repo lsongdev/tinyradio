@@ -128,21 +128,28 @@ void drawRuler(lgfx::LGFXBase& g) {
     const bool edge = (i > 0 && ticks[i - 1].valid && ticks[i - 1].band != tick.band) ||
                       (i < 26 && ticks[i + 1].valid && ticks[i + 1].band != tick.band);
     const bool major = edge || (tick.hz / tick.step) % 5 == 0;
+    bool nearBandEdge = false;
+    for (int distance = 1; distance < 5; ++distance) {
+      if ((i >= distance && ticks[i - distance].valid && ticks[i - distance].band != tick.band) ||
+          (i + distance <= 26 && ticks[i + distance].valid && ticks[i + distance].band != tick.band)) {
+        nearBandEdge = true;
+        break;
+      }
+    }
     const bool adjacent = tick.band != model.bandIndex();
     g.drawFastVLine(tick.x, 140, major ? 12 : 6, adjacent ? TFT_CYAN : major ? TFT_LIGHTGREY : TFT_DARKGREY);
-    if (major) {
+    if (major && (edge || !nearBandEdge)) {
       char label[20];
       if (edge) snprintf(label, sizeof label, "%s", radio::bands[tick.band].name);
       else {
         const auto tickFrequency = radio::formatFrequency(tick.hz);
         snprintf(label, sizeof label, "%s%c", tickFrequency.number, tick.hz >= 1000000 ? 'M' : 'k');
       }
-      // Keep the SW endpoint label clear of the adjacent 26 MHz tick value.
-      // Moving the number outward leaves tick positions and the continuous
-      // scale unchanged.
+      // Keep frequency labels one major division away from band names. Labels
+      // stay centered on their ticks; only values close to the edge are hidden.
       const int labelX = edge
           ? tick.x + (i > 0 && ticks[i - 1].band != tick.band ? 2 : -2)
-      : (tick.band == 2 && tick.hz >= radio::bands[2].maxHz - 200000 ? tick.x - 22 : tick.x);
+          : tick.x;
       const int labelWidth = g.textWidth(label);
       if (labelX + labelWidth / 2 < 160 - currentWidth / 2 - 6 || labelX - labelWidth / 2 > 160 + currentWidth / 2 + 6) {
         g.setTextColor(adjacent ? TFT_CYAN : TFT_LIGHTGREY, TFT_BLACK); g.drawString(label, labelX, 159);
