@@ -2,7 +2,9 @@
 #include "drivers/si473x/si473x.h"
 #include "radio/model.h"
 #include "radio/frequency.h"
-#include "radio/clock.h"
+#include "services/clock.h"
+#include "hal/clock.h"
+#include "rds_clock.h"
 #include "radio/saved_settings.h"
 #include "hal/settings_storage.h"
 #include "hal/audio.h"
@@ -24,7 +26,8 @@ hal::Audio audio;
 hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
-radio::Clock radioClock;
+services::Clock deviceClock;
+app::RdsClockSync rdsClockSync;
 enum class Field { Band, Frequency, Mode, Bandwidth, Gain, SoftMute, Step, Volume, Brightness, Count };
 Field field = Field::Frequency;
 int volume = 18, appliedVolume = -1;
@@ -74,19 +77,21 @@ void rememberSettings(uint32_t now) {
   } else Serial.println("Settings: save failed; retry in 10s");
 }
 const char* radioMessage() { return chip.rdsEnhancedText()[0] ? chip.rdsEnhancedText() : chip.rdsText(); }
-void formatClock(char (&text)[6], uint32_t now) {
-  const auto time = radioClock.read(now);
-  if (time.valid) snprintf(text, sizeof text, "%02u:%02u", unsigned(time.minutes / 60), unsigned(time.minutes % 60));
+bool formatClock(char (&text)[6], uint64_t now) {
+  const auto time = deviceClock.read(now);
+  if (time.valid) snprintf(text, sizeof text, "%02u:%02u", unsigned(time.hour), unsigned(time.minute));
   else memcpy(text, "--:--", sizeof text);
+  return time.valid;
 }
 void report() {
   const auto& s = chip.signal();
-  char clockText[6]; formatClock(clockText, millis());
+  char clockText[6]; formatClock(clockText, hal::monotonicMilliseconds());
   const auto& ct = chip.rdsClockTime();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u ct=[%s] ctmjd=%lu ctutc=%u ctoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
+  const auto time = deviceClock.read(hal::monotonicMilliseconds());
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
     static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, brightness, muted, settingsStored, savePending, static_cast<unsigned long>(settingsWrites),
-    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsEnhancedText(), chip.rdsEnhancedGroup(), chip.rdsEnhancedFlags(), clockText, static_cast<unsigned long>(ct.mjd), ct.utcMinutes, ct.offsetMinutes, chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
+    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsEnhancedText(), chip.rdsEnhancedGroup(), chip.rdsEnhancedFlags(), clockText, static_cast<unsigned long>(ct.mjd), ct.utcMinutes, ct.offsetMinutes, services::timeSourceName(time.source), static_cast<long long>(time.utcSeconds), time.utcOffsetMinutes, chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawCircle(x + 6, 10, 3, color);
@@ -195,8 +200,8 @@ void draw() {
     g.drawString(radio::bands[i].name, x + 13, 10);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
-  if (radioClock.read(millis()).valid) {
-    char clockText[6]; formatClock(clockText, millis());
+  char clockText[6];
+  if (formatClock(clockText, hal::monotonicMilliseconds())) {
     g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     g.setCursor(152, 7); g.print(clockText);
   }
@@ -534,8 +539,7 @@ void updateReceiver() {
   }
   if (now - lastBattery >= 1000) { lastBattery = now; supply = battery.read(); dirty = true; }
   if (radioMessage()[0] && now - lastDraw >= 50) dirty = true;
-  if (failed || reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != model.frequencyHz()) radioClock.clear();
-  else radioClock.update(chip.rdsClockTime(), now);
+  rdsClockSync.update(chip.rdsClockTime(), deviceClock, hal::monotonicMilliseconds());
   rememberSettings(now);
   if (dirty && now - lastDraw >= 50) { dirty = false; lastDraw = now; if (lcd) draw(); }
   if (screenshotRequested && (lastDraw || !lcd || !buffered)) {
