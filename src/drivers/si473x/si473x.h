@@ -28,6 +28,7 @@ public:
   bool readSignal();
   bool readRds();
   const RdsStatus& rdsStatus() const { return rdsStatus_; }
+  const RdsClockTime& rdsClockTime() const { return rds_.clockTime(); }
   const char* rdsPs() const { return rds_.text(); }
   const char* rdsText() const { return rds_.radioText(); }
   const char* rdsEnhancedText() const { return rds_.enhancedText(); }

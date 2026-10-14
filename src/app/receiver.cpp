@@ -2,6 +2,7 @@
 #include "drivers/si473x/si473x.h"
 #include "radio/model.h"
 #include "radio/frequency.h"
+#include "radio/clock.h"
 #include "radio/saved_settings.h"
 #include "hal/settings_storage.h"
 #include "hal/audio.h"
@@ -23,6 +24,7 @@ hal::Audio audio;
 hal::RadioHardware hardware;
 drivers::Si473x chip(hardware.bus());
 radio::Model model;
+radio::Clock radioClock;
 enum class Field { Band, Frequency, Mode, Bandwidth, Gain, SoftMute, Step, Volume, Brightness, Count };
 Field field = Field::Frequency;
 int volume = 18, appliedVolume = -1;
@@ -72,12 +74,19 @@ void rememberSettings(uint32_t now) {
   } else Serial.println("Settings: save failed; retry in 10s");
 }
 const char* radioMessage() { return chip.rdsEnhancedText()[0] ? chip.rdsEnhancedText() : chip.rdsText(); }
+void formatClock(char (&text)[6], uint32_t now) {
+  const auto time = radioClock.read(now);
+  if (time.valid) snprintf(text, sizeof text, "%02u:%02u", unsigned(time.minutes / 60), unsigned(time.minutes % 60));
+  else memcpy(text, "--:--", sizeof text);
+}
 void report() {
   const auto& s = chip.signal();
-  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
+  char clockText[6]; formatClock(clockText, millis());
+  const auto& ct = chip.rdsClockTime();
+  Serial.printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u ct=[%s] ctmjd=%lu ctutc=%u ctoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu error=%s\n",
     model.band().name, drivers::modeName(model.mode()), static_cast<unsigned long>(model.frequencyHz()),
     static_cast<unsigned long>(chip.frequencyHz()), static_cast<unsigned long>(model.stepHz()), volume, brightness, muted, settingsStored, savePending, static_cast<unsigned long>(settingsWrites),
-    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsEnhancedText(), chip.rdsEnhancedGroup(), chip.rdsEnhancedFlags(), chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
+    chip.tuning(), s.rssi, s.snr, s.valid, s.blend, s.pilot, s.agcEnabled, s.gainIndex, s.softMuted, s.afcRail, static_cast<unsigned long>(chip.bandwidthHz()), static_cast<unsigned>(field), seekMode, chip.seeking(), static_cast<unsigned>(chip.seekResult()), settings().bandwidth, settings().gain, settings().softMuteDb, chip.rdsPs(), chip.rdsText(), chip.rdsEnhancedText(), chip.rdsEnhancedGroup(), chip.rdsEnhancedFlags(), clockText, static_cast<unsigned long>(ct.mjd), ct.utcMinutes, ct.offsetMinutes, chip.rdsStatus().synchronized, chip.rdsStatus().queued, static_cast<unsigned long>(chip.rdsStatus().groups), static_cast<unsigned long>(chip.rdsStatus().overruns), chip.errorText());
 }
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
   g.drawCircle(x + 6, 10, 3, color);
@@ -175,7 +184,7 @@ void drawRuler(lgfx::LGFXBase& g) {
 }
 void draw() {
   lgfx::LGFXBase& g = buffered ? static_cast<lgfx::LGFXBase&>(frame) : static_cast<lgfx::LGFXBase&>(display);
-  g.fillScreen(TFT_BLACK); g.setTextSize(1);
+  g.fillScreen(TFT_BLACK); g.setFont(&fonts::Font0); g.setTextSize(1);
   // All bands remain visible in the left half of the single-line status bar.
   for (size_t i = 0; i < radio::bandCount; ++i) {
     const int x = 3 + i * 28;
@@ -186,6 +195,11 @@ void draw() {
     g.drawString(radio::bands[i].name, x + 13, 10);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
+  if (radioClock.read(millis()).valid) {
+    char clockText[6]; formatClock(clockText, millis());
+    g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    g.setCursor(152, 7); g.print(clockText);
+  }
   uint16_t color = field == Field::Brightness ? TFT_YELLOW : TFT_LIGHTGREY;
   drawSun(g, 196, color); g.setTextColor(color, TFT_BLACK);
   g.setCursor(212, 7); g.printf("%d%%", (brightness * 100 + 127) / 255);
@@ -208,7 +222,7 @@ void draw() {
   const auto frequency = radio::formatFrequency(hz);
   const bool pending = reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != hz;
   g.setTextColor(failed ? TFT_RED : seekMode ? TFT_MAGENTA : field == Field::Frequency ? TFT_YELLOW : TFT_WHITE, TFT_BLACK);
-  const bool rdsVisible = !failed && !pending && !seekMode;
+  const bool rdsVisible = !failed && !pending;
   const bool showPs = rdsVisible && chip.rdsPs()[0];
   const char* message = radioMessage();
   const bool showRt = rdsVisible && message[0];
@@ -242,12 +256,25 @@ void draw() {
     drawText(showPs ? chip.rdsPs() : message, textTop, rowHeight, 0);
     if (splitRds) drawText(message, textTop + rowHeight, rowHeight, 1);
   } else {
-    g.setFont(&fonts::Font0); g.setTextSize(4);
+    g.setFont(&fonts::efontCN_24_b); g.setTextSize(1);
+    lgfx::FontMetrics metrics{}; fonts::efontCN_24_b.getDefaultMetric(&metrics);
+    const float scale = float(textHeight - 4) / metrics.height;
+    g.setTextSize(scale);
     const int width = g.textWidth(frequency.number);
-    drawText(frequency.number, textTop, textHeight, 0);
-    g.setTextSize(1); g.setClipRect(8, textTop, regionWidth, textHeight);
-    g.drawString(frequency.unit, 8 + width + 3, 51);
-    g.clearClipRect();
+    const int baseline = textTop + (textHeight - g.fontHeight()) / 2 + int(metrics.baseline * scale);
+    g.setClipRect(8, textTop, regionWidth, textHeight);
+    g.setTextDatum(lgfx::textdatum_t::baseline_left);
+    g.drawString(frequency.number, 8, baseline);
+    constexpr float unitScale = 0.5f;
+    // efont's digits and MHz/kHz glyphs sit 3 native pixels above its Unicode
+    // baseline. Compensate the different scales so their ink baselines match.
+    const auto latinBaselineShift = [&](float size) {
+      return int((metrics.baseline - 3) * size) - int(metrics.baseline * size);
+    };
+    const int unitBaseline = baseline + latinBaselineShift(scale) - latinBaselineShift(unitScale);
+    g.setTextSize(unitScale);
+    g.drawString(frequency.unit, 8 + width + 4, unitBaseline);
+    g.clearClipRect(); scroll[0] = {};
   }
   if (!splitRds) scroll[1] = {};
   g.setFont(&fonts::Font0); g.setTextSize(1);
@@ -507,6 +534,8 @@ void updateReceiver() {
   }
   if (now - lastBattery >= 1000) { lastBattery = now; supply = battery.read(); dirty = true; }
   if (radioMessage()[0] && now - lastDraw >= 50) dirty = true;
+  if (failed || reconfigure || chip.tuning() || chip.seeking() || chip.frequencyHz() != model.frequencyHz()) radioClock.clear();
+  else radioClock.update(chip.rdsClockTime(), now);
   rememberSettings(now);
   if (dirty && now - lastDraw >= 50) { dirty = false; lastDraw = now; if (lcd) draw(); }
   if (screenshotRequested && (lastDraw || !lcd || !buffered)) {

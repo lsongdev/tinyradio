@@ -65,11 +65,11 @@ Manual tuning crosses from one band to the next at its endpoint. It stops at the
 | Long-press Volume | Toggle mute while retaining the chosen volume |
 | Short-press on receiver error | Reset the radio chip and retry |
 
-A long press lasts approximately 650 ms. Releasing it does not generate a second short press. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow.
+A long press lasts approximately 650 ms. Releasing it does not generate a second short press. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow. Station text remains visible in idle seek mode; an active search temporarily shows frequency instead.
 
 ## Reading the screen
 
-The top left lists bands. The top right shows brightness, volume, and battery estimate. The main area shows frequency and unit, or RDS text. Modes and reception controls occupy the next row; signal indicators and Step sit below them. The bottom ruler's red pointer always carries the current frequency.
+The top left lists bands. The top right shows the RDS clock beside brightness, followed by volume and battery estimate. The main area shows frequency and unit, or RDS text. Modes and reception controls occupy the next row; signal indicators and Step sit below them. The bottom ruler's red pointer always carries the current frequency.
 
 At band boundaries, the ruler reserves space for names such as SW and VHF. Blank positions between frequency endpoints and band-name markers are visual spacing, not frequencies you can tune.
 
@@ -110,6 +110,12 @@ RT has no broadcast-defined display duration. When the station starts a new mess
 **eRT (Enhanced RadioText)** is a separate broadcast service that can coexist with ordinary RT. This firmware supports up to 128 bytes of left-to-right UTF-8 eRT, including Chinese characters available in the screen font. This parsing is tested with constructed data; reception from an eRT broadcaster has not yet been verified on this unit. Confirmed nonempty eRT replaces RT in the same scrolling row; ordinary RT remains the fallback. PS stays in its own row.
 
 eRT has no A/B flag. A changed received segment clears the previous eRT; two matching complete transmissions are needed to show the replacement. Missing segments delay confirmation. Ordinary PS/RT still use printable ASCII; legacy UCS-2 eRT, right-to-left layout, and broadcaster-specific Chinese encodings are not supported.
+
+### CT clock
+
+When an FM station broadcasts **CT (Clock Time)**, its local time appears as `HH:MM` beside the brightness icon. The station supplies the UTC time and local offset; there is no manual timezone setting. It can take a minute or longer to receive the first update. Stations without valid CT show no clock.
+
+The time advances between updates, but disappears after five minutes without a distinct valid timestamp. Tuning, changing station/mode, starting a search, or switching off clears it until a fresh CT arrives. This time is supplied by the broadcaster and is not a saved device clock.
 
 ## Reception controls
 
