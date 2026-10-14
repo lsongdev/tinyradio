@@ -2,11 +2,13 @@
 #include <stdint.h>
 #include <string.h>
 #include "enhanced_radiotext.h"
+#include "clock_time.h"
 namespace drivers {
-// Decode PS (0A/0B), RT (2A/2B), and announced eRT, confirming repeated messages.
+// Decode PS/RT/eRT with message confirmation, and complete 4A clock-time groups.
 class RdsDecoder {
 public:
   void clear() { *this = RdsDecoder(); }
+  const RdsClockTime& clockTime() const { return clock_; }
   const char* text() const { return published_; }
   const char* radioText() const { return rtPublished_; }
   const char* enhancedText() const { return enhanced_.text(); }
@@ -17,6 +19,10 @@ public:
     if (!piKnown_ || pi != pi_) { clear(); pi_ = pi; piKnown_ = true; }
     if (((errors >> 4) & 3) > 2) return;
     const uint8_t group = (b >> 11) & 31;
+    if (group == 8) { // 4A only; 4B is an unrelated ODA carrier.
+      if (((errors >> 2) & 3) <= 2 && (errors & 3) <= 2) decodeClockTime(pi, b, c, d, clock_);
+      return;
+    }
     if (group == 6) {
       if (((errors >> 2) & 3) <= 2 && (errors & 3) <= 2) enhanced_.announce(b & 31, c, d);
       return;
@@ -41,6 +47,7 @@ public:
   }
 private:
   EnhancedRadioText enhanced_;
+  RdsClockTime clock_;
   void acceptText(uint16_t b, uint16_t d, uint16_t c, uint8_t errors) {
     const bool versionB = b & 0x800, flag = b & 0x10;
     if (!rtKnown_ || flag != rtFlag_ || versionB != rtVersionB_) {

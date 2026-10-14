@@ -45,7 +45,7 @@ Tuning polls STC without blocking the application for the entire operation. A tu
 
 ### Seek
 
-A 650 ms long-press on Frequency toggles seek mode, indicated in magenta. Rotation starts a search in the corresponding direction. Seek stays within the current band, with wrap disabled; repeated turns in the same direction do not queue station skips. Short-press cancels search, adopts the chip's reported frequency, and returns to manual tuning. SSB seek is unavailable. Seek status is polled every 100 ms, with a 30-second timeout.
+A 650 ms long-press on Frequency toggles seek mode, indicated in magenta. Rotation starts a search in the corresponding direction. Seek stays within the current band, with wrap disabled; repeated turns in the same direction do not queue station skips. Short-press cancels search, adopts the chip's reported frequency, and returns to manual tuning. RDS text remains visible while seek mode is idle; active tuning/search hides previous-station text. SSB seek is unavailable. Seek status is polled every 100 ms, with a 30-second timeout.
 
 ### Reception settings
 
@@ -57,7 +57,7 @@ The application draws a 320 × 170 RGB565 sprite and presents the complete frame
 
 | Region | Content |
 | --- | --- |
-| Top status bar | Band choices on the left; brightness, volume, and battery on the right |
+| Top status bar | Band choices on the left; CT clock, brightness, volume, and battery on the right |
 | Main area, x=8…311, y=22…67 | Frequency and unit, or RDS PS and RT/eRT text |
 | Controls at y=70 | Mode, BW, AGC/manual attenuation, and SM |
 | Signal row at y=91…107 | Equal-height RSSI bars, RSSI/SNR, VALID, AFC, RF gain, FM pilot, and Step |
@@ -81,6 +81,12 @@ PS and RT are published after two matching complete messages. RT's A/B flag or 2
 
 Ordinary PS/RT decode printable ASCII; other bytes become `?`.
 
+### Clock time
+
+CT is decoded only from group 4A. Its 17-bit UTC Modified Julian Day comes from B[1:0] and C[15:1]; the UTC hour comes from C[0] and D[15:12], the minute from D[11:6], and the signed half-hour local offset from D[5:0]. All required blocks must have BLE ≤ 2. Hours above 23, minutes above 59, and MJD outside 1–99999 are rejected; all-zero CT codes withdraw the clock. One valid group supplies a complete update, unlike multi-group PS/RT confirmation. Format reference: [NRSC-4-B, Figure 20](https://www.nrscstandards.org/standards-and-guidelines/documents/archive/nrsc-4-b-standard-2005.pdf).
+
+The driver exposes the broadcast value separately from presentation. `radio::Clock` applies its local offset and advances with unsigned `millis()` differences between distinct timestamps. Duplicate timestamps do not move the clock backwards or refresh the five-minute holdover limit. The status bar shows local `HH:MM` at x=152 beside brightness, and draws no clock when unavailable. UTC/local midnight rollover and `millis()` rollover are handled. Time is cleared on tuning, seek, reconfiguration, PI change, or a CT withdrawal, and is never saved to NVS or used to set the system clock.
+
 ### Enhanced RadioText
 
 Enhanced RadioText is an independent ODA service with AID `0x6552`. A valid 3A announcement assigns a five-bit carrier group code and flags: bit 0 selects UTF-8 instead of legacy UCS-2; bit 1 selects right-to-left layout. The implementation accepts allocatable A groups 5A–13A and supports UTF-8 left-to-right text. Unsupported encoding/layout leaves ordinary RT available. Reassignment, changed announcement flags, tuning, and PI changes reset eRT state.
@@ -93,7 +99,7 @@ This uses the SI4732's ordinary RDS group FIFO; additional RDS2 subcarriers, UCS
 
 ### Text layout
 
-The display reuses space: a single PS or RT uses bold `efontCN_24_b` scaled to approximately 42 pixels high; when both exist, it uses two approximately 21-pixel rows. Each row has its own scrolling state. A long string pauses 1.2 seconds at the start, advances one pixel per 35 ms, pauses 1.2 seconds at the end, and repeats. Confirmed content changes restart that row's scroll. There is no timed alternation between PS and RT.
+Frequency and its adjacent unit use the same bold `efontCN_24_b` as RDS; the number is approximately 42 pixels high and the unit is smaller, aligned to the same Latin glyph baseline as the number, compensating the font's native three-pixel inset at different scales. The display reuses space: a single PS or RT uses bold `efontCN_24_b` scaled to approximately 42 pixels high; when both exist, it uses two approximately 21-pixel rows. Each row has its own scrolling state. A long string pauses 1.2 seconds at the start, advances one pixel per 35 ms, pauses 1.2 seconds at the end, and repeats. Confirmed content changes restart that row's scroll. There is no timed alternation between PS and RT.
 
 ## Persistence
 
@@ -130,6 +136,7 @@ Host capture commands and the offline ruler renderer are described in [Developme
 | Band constraints, memories, and tuning transitions | [`model.h`](../src/radio/model.h), [`model.cpp`](../src/radio/model.cpp), [`tuning.h`](../src/drivers/si473x/tuning.h) |
 | Receiver state, focus, drawing, and save scheduling | [`receiver.cpp`](../src/app/receiver.cpp) |
 | Chip commands, patch, seek, FIFO, and signal readback | [`si473x.cpp`](../src/drivers/si473x/si473x.cpp), [`settings.h`](../src/drivers/si473x/settings.h) |
+| CT parsing and presentation clock | [`clock_time.h`](../src/drivers/si473x/clock_time.h), [`clock.h`](../src/radio/clock.h) |
 | PS/RT and eRT assembly | [`rds.h`](../src/drivers/si473x/rds.h), [`enhanced_radiotext.h`](../src/drivers/si473x/enhanced_radiotext.h) |
 | Settings format and storage | [`saved_settings.cpp`](../src/radio/saved_settings.cpp), [`settings_storage.cpp`](../src/hal/settings_storage.cpp) |
 | Battery interpretation | [`battery.cpp`](../src/hal/battery.cpp) |

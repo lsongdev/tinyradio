@@ -45,15 +45,19 @@ int main() {
   bus.synced = false; assert(chip.readRds() && !strcmp(chip.rdsPs(), "RADIO FM"));
   assert(!chip.rdsStatus().synchronized); bus.synced = true;
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
+  group(bus, 0x4001, 0xdf1e, 0xcad0); // MJD 61327, 12:43 UTC, +8h.
+  assert(chip.readRds() && chip.rdsClockTime().valid);
+  assert(chip.rdsClockTime().mjd == 61327 && chip.rdsClockTime().utcMinutes == 763 && chip.rdsClockTime().offsetMinutes == 480);
   enhanced(bus); assert(chip.readRds() && bus.fifo.empty());
   assert(chip.rdsEnhancedGroup() == 22 && chip.rdsEnhancedFlags() == 1);
   assert(!strcmp(chip.rdsEnhancedText(), "中文") && !strcmp(chip.rdsPs(), "RADIO FM"));
   assert(chip.readRds() && !strcmp(chip.rdsEnhancedText(), "中文"));
   name(bus, "OLD NAME"); assert(chip.tune(100100000) && !chip.rdsPs()[0] && bus.fifo.empty()); assert(settle(chip));
-  assert(chip.rdsEnhancedGroup() == -1 && !chip.rdsEnhancedText()[0]);
+  assert(chip.rdsEnhancedGroup() == -1 && !chip.rdsEnhancedText()[0] && !chip.rdsClockTime().valid);
   enhanced(bus); assert(chip.readRds());
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
-  assert(chip.seek(true,64000000,108000000,100000) && !chip.rdsPs()[0]); assert(!chip.rdsEnhancedText()[0] && chip.rdsEnhancedGroup() == -1); assert(chip.cancelSeek());
+  group(bus, 0x4001, 0xdf1e, 0xcad0); assert(chip.readRds() && chip.rdsClockTime().valid);
+  assert(chip.seek(true,64000000,108000000,100000) && !chip.rdsPs()[0]); assert(!chip.rdsEnhancedText()[0] && chip.rdsEnhancedGroup() == -1 && !chip.rdsClockTime().valid); assert(chip.cancelSeek());
   assert(chip.configure(drivers::Mode::AM,18) && chip.setReception({0,37,8}));
   assert(chip.bandwidthHz() == 1000 && has(bus, {0x12,0,0x31,2,0,4}) && has(bus, {0x48,1,37}));
   assert(chip.configure(drivers::Mode::USB,18) && chip.setReception({0,-1,0}));

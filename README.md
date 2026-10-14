@@ -20,7 +20,7 @@ Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stati
 - Continuous tuning across bands, with selectable modes and steps.
 - Seek by rotating the encoder; short-press to return to manual tuning.
 - Adjustable bandwidth, gain, soft mute, volume, and brightness.
-- RDS station names and scrolling radio text, including UTF-8 eRT support.
+- RDS station names, scrolling radio text, and broadcast clock, including UTF-8 eRT support.
 - Saved tuning and reception settings, plus full-screen screenshot export.
 
 ## Get started

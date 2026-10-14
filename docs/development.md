@@ -54,7 +54,7 @@ Run the host checks from the repository root:
 sh tools/test.sh
 ```
 
-These cover band/mode constraints, tuning boundaries/BFO, corrected RDS blocks, PS/RT/eRT assembly, UTF-8 boundaries and malformed input, simulated command/FIFO behavior, persistence validation, and screenshot framing/PNG encoding. Simulated tests do not establish RF sensitivity or audio quality.
+These cover band/mode constraints, tuning boundaries/BFO, corrected RDS blocks, PS/RT/eRT assembly, CT fields and local-time/holdover rollover, UTF-8 boundaries and malformed input, simulated command/FIFO behavior, persistence validation, and screenshot framing/PNG encoding. Simulated tests do not establish RF sensitivity or audio quality.
 
 Device smoke scripts in `test/*_smoke.py` exercise tuning, seek, reception controls, and persistence. They change settings; inspect each script before running. Tests originally written for default settings may need that configuration; rebooting now preserves settings. Do not use them merely to obtain screenshots.
 
@@ -80,6 +80,7 @@ At 115200 baud, commands are single characters without a required newline. `?` a
 | `requested`, `confirmed` | Target frequency and completed tune result, in Hz |
 | `ps`, `rt`, `ert` | Independently confirmed station name, ordinary RT, and eRT |
 | `ertgroup`, `ertflags` | Five-bit type/version code (-1 when unannounced), and 3A configuration flags |
+| `ct`, `ctmjd`, `ctutc`, `ctoffset` | Displayed local clock (or --:--), raw UTC MJD, UTC minutes since midnight, and signed local offset in minutes |
 | `rdssync`, `rdsfifo` | Current synchronization and last queried FIFO depth |
 | `rdsgroups`, `rdsoverruns` | Groups read and overruns observed since the last RDS invalidation |
 | `stored`, `save`, `writes` | Valid stored settings, pending save, and successful writes this boot |
