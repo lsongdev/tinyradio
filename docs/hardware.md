@@ -4,6 +4,13 @@ The firmware targets the **Sunnygold SI4732 Mini Radio, PCB 1.2 reference design
 
 This document separates schematic facts, software configuration, and observations on the connected receiver. For architecture and receiver behavior, see [Design](design.md).
 
+- [Sources and reference assets](#sources-and-reference-assets)
+- [Schematic facts](#schematic-facts)
+- [GPIO map](#gpio-map)
+- [Display configuration and observations](#display-configuration-and-observations)
+- [Battery indication](#battery-indication)
+- [Connected-unit verification](#connected-unit-verification)
+
 ## Sources and reference assets
 
 | Source | Purpose |
@@ -25,7 +32,7 @@ Local references:
 | [Chinese UI](images/radio-chinese-ui.png) | Community reference firmware screen |
 | [PCB/buttons](images/pcb-buttons.jpg) | Community photograph of the board and unpopulated button positions |
 
-The PDFs are unchanged copies. Reference photographs were renamed, not modified; they show reference units, not this user's receiver. Their upstream paths are `docs/source/_static/esp32-si4732-ui-theme.jpg`, `esp32-si4732-chinese-ui.png`, and `boot-reset-buttons-missing.jpg` at the community commit above. Current firmware screenshots named `screen-*.png` are separate framebuffer captures made with [the capture tool](../tools/capture_screen.py). Imported asset terms and credits are in [Third-party notices](../THIRD_PARTY_NOTICES.md).
+The PDFs are unchanged copies. Reference photographs were renamed, not modified; they show reference units, not this user's receiver. Their upstream paths are `docs/source/_static/esp32-si4732-ui-theme.jpg`, `esp32-si4732-chinese-ui.png`, and `boot-reset-buttons-missing.jpg` at the community commit above. Current firmware screenshots named `screen-*.png` are separate framebuffer captures made with [the capture tool](../tools/capture_screen.py). Imported asset terms and credits are in [Third-party notices](development.md#third-party-notices).
 
 ![Reference receiver exterior](images/radio-front.jpg)
 
@@ -70,17 +77,9 @@ On 2026-10-13, the user confirmed correct display orientation, RGB colors, encod
 
 ## Battery indication
 
-The ADC conversion averages 32 readings from `analogReadMilliVolts()` using ESP32 calibration and 11 dB attenuation:
+R8/R10 divide `VCC_BAT` by two before GPIO4. This node is not directly BAT+: on battery power it approximates cell voltage, while USB can feed it through the SS34 path. Consequently, its voltage cannot establish cell charge while connected to USB. There is no confirmed dedicated fuel-gauge measurement in this configuration.
 
-```text
-voltage = ADC_millivolts × 2 × batteryCalibration / 1000
-```
-
-`batteryCalibration` defaults to 1.0. To calibrate, disconnect USB, measure `VCC_BAT` with a meter, and use measured voltage divided by the firmware reading. The 1.71/1.702 factors seen in other firmware convert raw ADC codes; applying them to calibrated millivolts would double-convert the reading.
-
-On battery power, `VCC_BAT` approximates cell voltage. With USB connected, it can instead reflect the USB path through SS34, so it is not a reliable cell measurement. The UI uses a full cyan battery icon and `USB` for suspected external power, and `--%` for an implausible reading. The full USB icon is a power-source indicator, not a claim that the cell is charged. External power is inferred above 4.35 V; this heuristic cannot detect every USB-powered condition. Readings outside 2.5–5.5 V are treated as implausible.
-
-On battery power, 3.2–4.2 V maps linearly to 0–100%, clamped to that range. This is an estimate, not a fuel gauge or an undervoltage protection mechanism. Cell capacity, chemistry, aging, and per-unit voltage calibration have not been established here.
+Firmware ADC averaging, plausibility thresholds, external-power inference, and percentage calculation are described in [Design](design.md#battery-interpretation). Calibration is in [Development](development.md#battery-calibration), and the status-bar symbols are in the [user manual](user-manual.md#battery-estimate). Cell capacity, chemistry, aging, and per-unit calibration have not been established here.
 
 ## Connected-unit verification
 
@@ -89,7 +88,7 @@ On battery power, 3.2–4.2 V maps linearly to 0–100%, clamped to that range. 
 - GET_REV reports FM component 7.0 and AM component 6.0. Part/main-firmware fields return zero and do not further identify the fitted chip.
 - Loaded SSB patch ID is `0xA902`.
 - Tune-command readback has been exercised on LW/MW/SW/FM, including SSB BFO control.
-- FM 95.9 MHz has yielded PS `LOVE959` and RT on the connected unit.
+- FM 95.9 MHz has yielded PS `LOVE959` and ordinary RT on the connected unit. After flashing the eRT implementation, PS and RDS synchronization were observed again, but no eRT announcement was received during that observation. UTF-8 eRT is validated with constructed groups and a simulated FIFO, not yet with an on-air eRT broadcast.
 - Exact PCB revision, fitted LCD-controller markings, RF sensitivity, SSB listening quality, absolute frequency accuracy, and battery calibration remain unverified.
 
-The battery-screen example remains in `src/examples` and can be selected with the `BATTERY_DEMO` build macro. Current receiver behavior and validation procedures are described in [Design](design.md).
+The [development guide](development.md) covers the battery demo, diagnostics, and verification procedures. Host tests and tune readback do not establish RF sensitivity, audio quality, or oscillator accuracy.

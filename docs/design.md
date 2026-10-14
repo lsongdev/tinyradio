@@ -1,6 +1,16 @@
 # Firmware Design
 
-This document describes the current implementation. Board-level evidence belongs in [Hardware facts](hardware.md); everyday operation belongs in the [User manual](user-manual.md).
+This document explains how the current firmware works. Build, diagnostics, tools, tests, and release procedures are in [Development](development.md). Board evidence is in [Hardware facts](hardware.md); everyday operation is in the [User manual](user-manual.md).
+
+- [Architecture](#architecture)
+- [Frequency model](#frequency-model)
+- [Receiver coordination](#receiver-coordination)
+- [UI and display](#ui-and-display)
+- [RDS decoding and presentation](#rds-decoding-and-presentation)
+- [Persistence](#persistence)
+- [Battery interpretation](#battery-interpretation)
+- [Full-screen capture](#full-screen-capture)
+- [Implementation references](#implementation-references)
 
 ## Architecture
 
@@ -25,7 +35,7 @@ Each band remembers its frequency, mode, and step. Manual tuning follows the cur
 
 On entry, the driver uses `carrier_kHz = floor(hz / 1000)` and `BFO = -(hz % 1000)`. During continuous tuning, it keeps the RF carrier while the target is within ±8 kHz, adjusting only BFO; outside that window it retunes the carrier. Fine steps do not establish absolute oscillator accuracy.
 
-The compressed patch is loaded when entering SSB from another receiver engine, and GET_REV must report patch ID `0xA902`. LSB/USB changes retain the existing patch. Reset, power loss, or leaving SSB requires a reload. See [third-party notices](../THIRD_PARTY_NOTICES.md#ssb-patch) for its provenance and terms.
+The compressed patch is loaded when entering SSB from another receiver engine, and GET_REV must report patch ID `0xA902`. LSB/USB changes retain the existing patch. Reset, power loss, or leaving SSB requires a reload. See [third-party notices](development.md#ssb-patch) for its provenance and terms.
 
 ## Receiver coordination
 
@@ -37,6 +47,10 @@ Tuning polls STC without blocking the application for the entire operation. A tu
 
 A 650 ms long-press on Frequency toggles seek mode, indicated in magenta. Rotation starts a search in the corresponding direction. Seek stays within the current band, with wrap disabled; repeated turns in the same direction do not queue station skips. Short-press cancels search, adopts the chip's reported frequency, and returns to manual tuning. SSB seek is unavailable. Seek status is polled every 100 ms, with a 30-second timeout.
 
+### Reception settings
+
+[`settings.h`](../src/drivers/si473x/settings.h) maps the mode-specific bandwidth choices to SI4732 property codes. The [user manual](user-manual.md#reception-controls) lists their displayed values. AGC can be automatic or overridden with a chip attenuation index; these indices are not dB. SM sets maximum attenuation under poor reception, rather than a squelch threshold. FM uses 50 μs de-emphasis. SW uses antenna capacitor value 1; LW/MW use automatic value 0. Reception settings are remembered per demodulation mode.
+
 ## UI and display
 
 The application draws a 320 × 170 RGB565 sprite and presents the complete frame to reduce flicker. The confirmed board uses rotation 3. If framebuffer allocation fails, the UI falls back to direct drawing; screenshot export then reports that its framebuffer is unavailable.
@@ -44,7 +58,7 @@ The application draws a 320 × 170 RGB565 sprite and presents the complete frame
 | Region | Content |
 | --- | --- |
 | Top status bar | Band choices on the left; brightness, volume, and battery on the right |
-| Main area, x=8…311, y=22…67 | Frequency and unit, or RDS PS/RT text |
+| Main area, x=8…311, y=22…67 | Frequency and unit, or RDS PS and RT/eRT text |
 | Controls at y=70 | Mode, BW, AGC/manual attenuation, and SM |
 | Signal row at y=91…107 | Equal-height RSSI bars, RSSI/SNR, VALID, AFC, RF gain, FM pilot, and Step |
 | Bottom scale | Continuous ruler, band-boundary labels, red cursor, and current frequency |
@@ -57,15 +71,19 @@ The volume icon is gray for mono, cyan for stereo blend, dark gray while quality
 
 The ruler advances in 12-pixel minor divisions. Between adjacent bands, decorative positions reserve five minor divisions from the last frequency to the departing band name, one division between band names, and five divisions to the next frequency. Only the two name markers and actual frequency ticks are drawn. Decorative positions have no tunable frequency: crossing bands remains one encoder step. The red cursor's label always shows the actual frequency, including when RDS occupies the main area.
 
-### RDS decoding and presentation
+## RDS decoding and presentation
+
+### PS and ordinary RT
 
 PS is decoded from groups 0A/0B and RT from 2A/2B. `FM_RDS_CONFIG=0xAA01` admits corrected blocks with BLE levels 0–2; required blocks with BLE=3 are rejected. Station PI changes invalidate previous text. Up to eight FIFO groups are drained every 100 ms. Temporary synchronization loss or FIFO overrun does not flush surviving groups or erase already confirmed text.
 
-PS and RT are published after two matching complete messages. RT's A/B flag or 2A/2B version change immediately clears the old RT and starts a new assembly. The decoder also accepts a confirmed empty message. There is no display expiry timer: a reception gap alone does not clear RT. With slow or intermittent delivery, the two-message confirmation can leave RT blank for several seconds. In a three-minute observation of 95.9 MHz, PS `LOVE959` stayed stable while two RT messages alternated; blank intervals were usually 15–19 seconds, once about 45 seconds, with RDS synchronization maintained and no FIFO overruns.
+PS and RT are published after two matching complete messages. RT's A/B flag or 2A/2B version change immediately clears the old RT and starts a new assembly. The decoder also accepts a confirmed empty message. There is no display expiry timer: a reception gap alone does not clear RT. With slow or intermittent delivery, the two-message confirmation can leave RT blank for several seconds.
 
-The display reuses space: a single PS or RT uses bold `efontCN_24_b` scaled to approximately 42 pixels high; when both exist, it uses two approximately 21-pixel rows. Each row has its own scrolling state. A long string pauses 1.2 seconds at the start, advances one pixel per 35 ms, pauses 1.2 seconds at the end, and repeats. Confirmed content changes restart that row's scroll. There is no timed alternation between PS and RT.
+Ordinary PS/RT decode printable ASCII; other bytes become `?`.
 
-Ordinary PS/RT decode printable ASCII; other bytes become `?`. Enhanced RadioText is an independent ODA service with AID `0x6552`. A valid 3A announcement assigns a five-bit carrier group code and flags: bit 0 selects UTF-8 instead of legacy UCS-2; bit 1 selects right-to-left layout. The implementation accepts allocatable A groups 5A–13A and supports UTF-8 left-to-right text. Unsupported encoding/layout leaves ordinary RT available. Reassignment, changed announcement flags, tuning, and PI changes reset eRT state.
+### Enhanced RadioText
+
+Enhanced RadioText is an independent ODA service with AID `0x6552`. A valid 3A announcement assigns a five-bit carrier group code and flags: bit 0 selects UTF-8 instead of legacy UCS-2; bit 1 selects right-to-left layout. The implementation accepts allocatable A groups 5A–13A and supports UTF-8 left-to-right text. Unsupported encoding/layout leaves ordinary RT available. Reassignment, changed announcement flags, tuning, and PI changes reset eRT state.
 
 Each carrier group contributes four raw bytes from blocks C/D at segment index B[4:0]. Segments 0–31 form at most 128 bytes; `0x0D` ends a shorter message. Assembly starts at segment zero and requires consecutive segments. Identical retransmitted segments are harmless; a gap or conflicting duplicate discards the partial cycle and waits for another segment zero. UTF-8 validation occurs after assembly, so multibyte characters may cross segment boundaries. Overlong sequences, surrogates, invalid continuations, truncated characters, and out-of-range code points are rejected. Display control bytes are rejected too.
 
@@ -73,17 +91,9 @@ eRT has no ordinary RT A/B flag. A changed valid segment overlapping the previou
 
 This uses the SI4732's ordinary RDS group FIFO; additional RDS2 subcarriers, UCS-2, right-to-left shaping, eRT+ tagging, and broadcaster-specific Chinese encodings are outside this implementation. Protocol references: [RDS Forum glossary](https://www.rds.org.uk/pages/glossary-of-terms.html), [NRSC ODA AID registry](https://www.nrscstandards.org/committees/dsm/archive/rds-oda-aids.pdf), and the [redsea receiver's eRT field parsing](https://github.com/windytan/redsea/blob/master/src/station.cc).
 
-### Reception settings
+### Text layout
 
-| Control | Values |
-| --- | --- |
-| FM BW | AUTO, 40, 60, 84, 110 kHz |
-| AM BW | 1, 1.8, 2, 2.5, 3, 4, 6 kHz |
-| SSB BW | 0.5, 1, 1.2, 2.2, 3, 4 kHz |
-| AGC / ATT | AUTO, or chip gain index 0–26 for FM / 0–37 for AM/SSB |
-| SM | 0–31 dB soft-mute attenuation; zero is OFF |
-
-Manual gain indices represent attenuation settings, not dB. SM controls attenuation under poor reception; it is not a squelch threshold. FM uses 50 μs de-emphasis. SW uses antenna capacitor value 1; LW/MW use automatic value 0. Reception settings are remembered per demodulation mode.
+The display reuses space: a single PS or RT uses bold `efontCN_24_b` scaled to approximately 42 pixels high; when both exist, it uses two approximately 21-pixel rows. Each row has its own scrolling state. A long string pauses 1.2 seconds at the start, advances one pixel per 35 ms, pauses 1.2 seconds at the end, and repeats. Confirmed content changes restart that row's scroll. There is no timed alternation between PS and RT.
 
 ## Persistence
 
@@ -91,7 +101,13 @@ After two seconds without changes, and when tuning/seek has completed, the appli
 
 NVS access lives in `src/hal/settings_storage.*`. `src/radio/saved_settings.*` encodes a 96-byte record with explicit little-endian fields, version, band count, and CRC32. It validates values before applying them; unsupported or corrupt records fall back to defaults. No C++ struct padding or internal step indices are stored. Unchanged settings are not rewritten; failed writes retry after ten seconds. Updates preserve compatible NVS records.
 
-Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, unmuted, BW AUTO, AGC AUTO, and FM SM 16 dB. Changes made within the final two seconds before power removal may be lost.
+Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, unmuted, BW AUTO, AGC AUTO, and FM SM 16 dB. AM defaults to 3 kHz BW with SM off; LSB/USB default to 2.2 kHz BW with SM off. Changes made within the final two seconds before power removal may be lost.
+
+## Battery interpretation
+
+The HAL averages 32 calibrated `analogReadMilliVolts()` readings with 11 dB attenuation, then computes `volts = ADC_millivolts × 2 × batteryCalibration / 1000`. The software defaults to a calibration factor of 1.0. Readings outside 2.5–5.5 V are implausible; values above 4.35 V indicate suspected external power. This threshold is a heuristic, not USB connection detection. Battery percentage is `int((volts - 3.2) × 100)`, clamped to 0–100.
+
+The UI shows `--%` for an implausible reading and a full cyan battery with `USB` for suspected external power. The full icon does not mean the cell is charged. The measured supply node is described in [Hardware facts](hardware.md#battery-indication); calibration instructions are in [Development](development.md#battery-calibration).
 
 ## Full-screen capture
 
@@ -105,68 +121,17 @@ Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, unm
 
 This is a binary transfer, so other serial consumers must be closed. Requests received before the initial frame is drawn wait until a complete frame has been presented. Firmware sends one row at a time with bounded write retries; it briefly pauses the main loop. The host validates dimensions, payload length, and the closing marker before writing an RGB PNG. PNG encoding uses `struct` and `zlib`; only serial access needs pyserial. Failure leaves the requested output untouched. The framebuffer capture reflects UI pixels, not LCD optics or panel gamma.
 
-```sh
-python3 -m pip install -r tools/requirements.txt
-python3 tools/capture_screen.py --port /dev/ttyACM0 --output screenshot.png
-```
+Host capture commands and the offline ruler renderer are described in [Development](development.md#screen-capture-and-ruler-preview).
 
-The separate `tools/render_ruler.py` creates SVG previews of the ruler geometry offline; it does not capture a device.
+## Implementation references
 
-## Validation
-
-Build and flash commands are in the [README](../README.md#quick-start). Run native tests from the repository root:
-
-```sh
-sh tools/test.sh
-```
-
-These cover band/mode constraints, tuning boundaries/BFO, corrected RDS blocks, PS/RT/eRT assembly, UTF-8 boundaries and malformed input, simulated command/FIFO behavior, persistence validation, and screenshot framing/PNG encoding. Simulated tests do not establish RF sensitivity or audio quality.
-
-Device smoke scripts in `test/*_smoke.py` exercise tuning, seek, reception controls, and persistence. They change settings; inspect each script before running. Tests originally written for default settings may need that configuration; rebooting now preserves settings. Do not use them merely to obtain screenshots.
-
-USB diagnostics:
-
-| Command | Action |
+| Topic | Code |
 | --- | --- |
-| `?` | Report receiver, RDS, focus, and storage state |
-| `S` | Export full-screen RGB888 snapshot |
-| `0`, `1`, `2`, `3` | Select LW, MW, SW, VHF |
-| `a`, `l`, `u`, `f` | Select AM, LSB, USB, FM where allowed |
-| `+`, `-` | Adjust frequency, or request seek in seek mode |
-| `[`, `]` | Go to current band's lower/upper endpoint |
-| `e`, `h` | Short/long encoder press |
-| `>`, `<` | Adjust focused item |
-| `m` | Toggle mute |
-| `r` | Reset chip and retry |
+| Band constraints, memories, and tuning transitions | [`model.h`](../src/radio/model.h), [`model.cpp`](../src/radio/model.cpp), [`tuning.h`](../src/drivers/si473x/tuning.h) |
+| Receiver state, focus, drawing, and save scheduling | [`receiver.cpp`](../src/app/receiver.cpp) |
+| Chip commands, patch, seek, FIFO, and signal readback | [`si473x.cpp`](../src/drivers/si473x/si473x.cpp), [`settings.h`](../src/drivers/si473x/settings.h) |
+| PS/RT and eRT assembly | [`rds.h`](../src/drivers/si473x/rds.h), [`enhanced_radiotext.h`](../src/drivers/si473x/enhanced_radiotext.h) |
+| Settings format and storage | [`saved_settings.cpp`](../src/radio/saved_settings.cpp), [`settings_storage.cpp`](../src/hal/settings_storage.cpp) |
+| Battery interpretation | [`battery.cpp`](../src/hal/battery.cpp) |
 
-`requested` is the target; `confirmed` is the completed tune result. `ps`/`rt` contain confirmed text; `rdssync` reports current synchronization; `rdsfifo` is the last queried FIFO depth; `rdsgroups` and `rdsoverruns` count received groups and observed overruns since invalidation. `stored`, `save`, and `writes` describe persistence. A successful tune or `error=OK` does not imply that a station exists or that its audio is intelligible.
-
-## Continuous integration and daily releases
-
-[`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) follows the GeekNest Radio build/publication pattern, adapted to this board and the `master` branch. One workflow coordinates both build and publication. Pushes, pull requests, and manual dispatch run `tools/test.sh`, build with pinned PlatformIO 6.1.18, and package firmware. Actions are pinned to verified commit hashes; PlatformIO platforms/packages are cached against `platformio.ini`.
-
-Successful `master` builds update one prerelease per Shanghai calendar day, tagged `daily-YYYY-MM-DD`. PR builds produce downloadable artifacts only. Publication is serialized and checks that its commit is still the head of `master`, preventing a superseded build from replacing a newer one.
-
-`tools/package_firmware.py` obtains installed dependency paths from PlatformIO, including version-suffixed package directories. It exports:
-
-- The application image for updates at `0x10000`.
-- A filled 16 MiB image for complete installation at `0x0`, which resets NVS/data.
-- An install ZIP with bootloader (`0x0`), partitions (`0x8000`), boot-app marker (`0xe000`), application (`0x10000`), instructions, source snapshot, and notices.
-- Build metadata and SHA-256 checksums.
-
-The ESP32-S3 ROM image uses DIO/80 MHz upload parameters, matching PlatformIO's Arduino handling of the QIO board configuration. The application configures the board's QIO flash mode. Multi-file or application-only updates preserve compatible NVS; the filled full image overwrites it.
-
-Packaging requires a clean checkout so the archived commit corresponds to the release source. Local validation may use `--allow-dirty`; its metadata marks that result as dirty and its source archive still represents HEAD. Run the tool with the Python environment where PlatformIO is installed:
-
-```sh
-python tools/package_firmware.py --output dist
-```
-
-No repository visibility change is made by the workflow. A private repository's prereleases remain private until the repository is made public.
-
-## References
-
-- [Skyworks AN332 programming guide](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf)
-- [PU2CLR SSB interfaces](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html)
-- [Community BFO reference](https://github.com/esp32-si4732/ats-mini/blob/ab4f5dc8120767cbb134b70096929f74c49df3e7/ats-mini/ats-mini.ino)
-- [Third-party notices and patch provenance](../THIRD_PARTY_NOTICES.md)
+Protocol references: [Skyworks AN332](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf), [PU2CLR SSB interfaces](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html), and [community BFO implementation](https://github.com/esp32-si4732/ats-mini/blob/ab4f5dc8120767cbb134b70096929f74c49df3e7/ats-mini/ats-mini.ino).

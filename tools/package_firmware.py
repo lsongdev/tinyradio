@@ -102,7 +102,7 @@ compatible; the filled full image resets all settings/data partitions.
 {PREFIX}-build-info.json identifies the source commit, package versions and hashes.
 {PREFIX}-source.tar.gz contains the tracked project at that commit. Local packages
 marked dirty may include firmware changes absent from that source snapshot.
-Read THIRD_PARTY_NOTICES.md and licenses/ for third-party patch, hardware and
+Read docs/development.md (Third-party notices) and licenses/ for patch, hardware and
 font/dependency terms. The SSB patch is separate from the project's MIT license.
 '''
     install = output / f"{PREFIX}-install.zip"
@@ -116,8 +116,11 @@ font/dependency terms. The SSB patch is separate from the project's MIT license.
             archive.write(info_path, info_path.name)
             archive.write(source, source.name)
             archive.writestr("FLASHING.txt", instructions)
-            for name in ("LICENSE", "THIRD_PARTY_NOTICES.md", "platformio.ini"):
+            for name in ("LICENSE", "platformio.ini"):
                 archive.write(ROOT / name, name)
+            for path in sorted((ROOT / "docs").rglob("*")):
+                if path.is_file():
+                    archive.write(path, str(path.relative_to(ROOT)))
             archive.write(ROOT / "src/drivers/si473x/patches/ssb.h", "licenses/ssb_patch.h")
             for tree, prefix in [(ROOT / "docs/licenses", "project-dependencies"),
                                  (framework, "arduino-esp32"),

@@ -1,10 +1,43 @@
 # User Manual
 
+- [Getting started](#getting-started)
+- [Installing or updating firmware](#installing-or-updating-firmware)
+- [Bands and modes](#bands-and-modes)
+- [Encoder controls](#encoder-controls)
+- [Reading the screen](#reading-the-screen)
+- [RDS station names and text](#rds-station-names-and-text)
+- [Reception controls](#reception-controls)
+- [Saved settings](#saved-settings)
+- [Battery estimate](#battery-estimate)
+- [Screenshots](#screenshots)
+- [Troubleshooting](#troubleshooting)
+
 ## Getting started
 
 Switch on the receiver. It restores saved settings and starts with Frequency focused, ready for manual tuning. Rotate the encoder to tune, short-press to select another control, and rotate to change that control.
 
-Prebuilt firmware is available in [daily prereleases](https://github.com/lsongdev/ats-mini/releases). Use the application image for updates that preserve settings; the complete 16 MiB image resets settings/data. Flashing instructions are included in the install ZIP. For source builds, see the [README](../README.md#quick-start). For board-specific information, see [Hardware facts](hardware.md).
+For board-specific information, see [Hardware facts](hardware.md). Source build commands are in [Development](development.md#build-and-flash).
+
+## Installing or updating firmware
+
+Download the install ZIP from the [releases page](https://github.com/lsongdev/ats-mini/releases). Successful `master` builds update the prerelease for that Shanghai calendar day. Check your board against the [supported hardware](hardware.md) and follow `FLASHING.txt` in the ZIP.
+
+| File | Purpose |
+| --- | --- |
+| `ats-mini-firmware.bin` | Application update at `0x10000`; preserves compatible saved settings |
+| `ats-mini-full.bin` | Complete 16 MiB installation at `0x0`; resets saved settings/data |
+| `ats-mini-install.zip` | Flashing files, instructions, source snapshot, documentation, and notices |
+| `ats-mini-build-info.json` | Source commit, dependency versions, and build identity |
+| `ats-mini-sha256sums.txt` | SHA-256 hashes for the downloads |
+
+For example, after extracting the ZIP and installing Python:
+
+```sh
+python -m pip install esptool==4.9.0
+python -m esptool --chip esp32s3 --port PORT --baud 460800 write_flash 0x10000 ats-mini-firmware.bin
+```
+
+Replace `PORT` with the receiver's USB serial port. Close other serial monitors first. The command above updates only the application. Use the complete-installation or multi-file commands in `FLASHING.txt` for those installation types, and use files from the same package.
 
 ## Bands and modes
 
@@ -74,7 +107,7 @@ With only PS or RT available, the main area uses large text, approximately 42 pi
 
 RT has no broadcast-defined display duration. When the station starts a new message by changing its A/B flag, this firmware clears the old RT and waits for two matching complete new messages. Consequently, RT can disappear temporarily and the PS name can become larger. A reception gap alone does not clear confirmed RT; a confirmed empty message does. Updates depend on the broadcaster and reception quality, not on a timer that alternates PS and RT.
 
-**eRT (Enhanced RadioText)** is a separate broadcast service that can coexist with ordinary RT. This firmware supports up to 128 bytes of left-to-right UTF-8 eRT, including Chinese supported by the screen font. Confirmed nonempty eRT replaces RT in the same scrolling row; ordinary RT remains the fallback. PS stays in its own row.
+**eRT (Enhanced RadioText)** is a separate broadcast service that can coexist with ordinary RT. This firmware supports up to 128 bytes of left-to-right UTF-8 eRT, including Chinese characters available in the screen font. This parsing is tested with constructed data; reception from an eRT broadcaster has not yet been verified on this unit. Confirmed nonempty eRT replaces RT in the same scrolling row; ordinary RT remains the fallback. PS stays in its own row.
 
 eRT has no A/B flag. A changed received segment clears the previous eRT; two matching complete transmissions are needed to show the replacement. Missing segments delay confirmation. Ordinary PS/RT still use printable ASCII; legacy UCS-2 eRT, right-to-left layout, and broadcaster-specific Chinese encodings are not supported.
 
@@ -82,14 +115,14 @@ eRT has no A/B flag. A changed received segment clears the previous eRT; two mat
 
 | Control | What you adjust |
 | --- | --- |
-| BW | Channel/audio bandwidth: FM AUTO or 40–110 kHz; AM 1–6 kHz; SSB 0.5–4 kHz |
-| AGC / ATT | Automatic gain control, or manual attenuation index |
+| BW | FM: AUTO, 40, 60, 84, 110 kHz; AM: 1, 1.8, 2, 2.5, 3, 4, 6 kHz; SSB: 0.5, 1, 1.2, 2.2, 3, 4 kHz |
+| AGC / ATT | AUTO, or manual attenuation index 0–26 for FM / 0–37 for AM/SSB; the index is not dB |
 | SM | Soft-mute attenuation from OFF to 31 dB |
 | Step | Manual tuning increment |
 | Volume | Audio level, 0–100% |
 | Brightness | Display backlight level |
 
-SM is soft mute, not a squelch threshold. BW, AGC, and SM are remembered separately for each demodulation mode. Available bandwidth values are listed in [Design](design.md#reception-settings).
+SM is soft mute, not a squelch threshold. BW, AGC, and SM are remembered separately for each demodulation mode.
 
 ### Tuning steps
 
@@ -115,14 +148,7 @@ The board's ADC measures a supply node that may follow USB voltage, so battery p
 
 ## Screenshots
 
-Connect USB, close the serial monitor, then use the host tool:
-
-```sh
-python3 -m pip install -r tools/requirements.txt
-python3 tools/capture_screen.py --port /dev/ttyACM0 --output screenshot.png
-```
-
-Replace the port with your receiver's port from `pio device list`. The image includes the whole 320 × 170 screen. Capture does not change settings; the UI briefly pauses while sending it. Add `--wait 5` to wait before taking the snapshot.
+Connect USB and use the [capture procedure](development.md#screen-capture-and-ruler-preview). The export contains the entire 320 × 170 display and does not change settings; the UI briefly pauses during transfer.
 
 ## Troubleshooting
 
@@ -135,4 +161,4 @@ Replace the port with your receiver's port from `pio device list`. The image inc
 | Screenshot reports no framebuffer | Restart the receiver; capture requires successful framebuffer allocation. |
 | Display orientation or colors differ | Board/display variants exist. Verify the controller and configuration against [Hardware facts](hardware.md). |
 
-For bug reports, include board markings if known, firmware commit, frequency/mode, reproduction steps, a screenshot, and serial status. Native and device validation procedures are in [Design](design.md#validation).
+For bug reports, include board markings if known, firmware commit, frequency/mode, reproduction steps, a screenshot, and serial status. Native and device validation procedures are in [Development](development.md#validation).

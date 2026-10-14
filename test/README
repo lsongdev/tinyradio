@@ -1,7 +1,0 @@
-Tests run from the repository root. Native tests use the host C++ compiler;
-Python screenshot tests use the standard library. See docs/design.md#validation
-for complete commands and scope.
-
-Device scripts require pyserial and a connected receiver. They change settings
-and some restart the device; inspect them before use. Do not run them just to
-capture a screenshot. Use tools/capture_screen.py for a non-tuning capture.
