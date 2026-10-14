@@ -1,4 +1,5 @@
 #include "drivers/si473x/si473x.h"
+#include "app/rds_clock.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,6 +33,7 @@ static bool settle(drivers::Si473x& chip) {
 }
 int main() {
   TwoWire bus; drivers::Si473x chip(bus);
+  services::Clock clock; app::RdsClockSync clockSync;
   assert(chip.begin() && chip.configure(drivers::Mode::FM, 18));
   assert(has(bus, {0x12,0,0x15,2,0xaa,1}));
   assert(has(bus, {0x12,0,0x15,0,0,1}) && has(bus, {0x12,0,0x15,1,0,1}));
@@ -48,16 +50,23 @@ int main() {
   group(bus, 0x4001, 0xdf1e, 0xcad0); // MJD 61327, 12:43 UTC, +8h.
   assert(chip.readRds() && chip.rdsClockTime().valid);
   assert(chip.rdsClockTime().mjd == 61327 && chip.rdsClockTime().utcMinutes == 763 && chip.rdsClockTime().offsetMinutes == 480);
+  clockSync.update(chip.rdsClockTime(),clock,1000);
+  const auto firstTime = clock.read(1000).utcSeconds;
+  assert(clock.read(1000).valid);
   enhanced(bus); assert(chip.readRds() && bus.fifo.empty());
   assert(chip.rdsEnhancedGroup() == 22 && chip.rdsEnhancedFlags() == 1);
   assert(!strcmp(chip.rdsEnhancedText(), "中文") && !strcmp(chip.rdsPs(), "RADIO FM"));
   assert(chip.readRds() && !strcmp(chip.rdsEnhancedText(), "中文"));
   name(bus, "OLD NAME"); assert(chip.tune(100100000) && !chip.rdsPs()[0] && bus.fifo.empty()); assert(settle(chip));
   assert(chip.rdsEnhancedGroup() == -1 && !chip.rdsEnhancedText()[0] && !chip.rdsClockTime().valid);
+  clockSync.update(chip.rdsClockTime(),clock,601000);
+  assert(clock.read(601000).valid && clock.read(601000).utcSeconds == firstTime + 600);
   enhanced(bus); assert(chip.readRds());
   name(bus, "RADIO FM"); assert(chip.readRds() && chip.readRds());
   group(bus, 0x4001, 0xdf1e, 0xcad0); assert(chip.readRds() && chip.rdsClockTime().valid);
   assert(chip.seek(true,64000000,108000000,100000) && !chip.rdsPs()[0]); assert(!chip.rdsEnhancedText()[0] && chip.rdsEnhancedGroup() == -1 && !chip.rdsClockTime().valid); assert(chip.cancelSeek());
+  clockSync.update(chip.rdsClockTime(),clock,602000);
+  assert(clock.read(602000).valid && clock.read(602000).utcSeconds == firstTime + 601);
   assert(chip.configure(drivers::Mode::AM,18) && chip.setReception({0,37,8}));
   assert(chip.bandwidthHz() == 1000 && has(bus, {0x12,0,0x31,2,0,4}) && has(bus, {0x48,1,37}));
   assert(chip.configure(drivers::Mode::USB,18) && chip.setReception({0,-1,0}));

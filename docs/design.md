@@ -19,7 +19,8 @@ This document explains how the current firmware works. Build, diagnostics, tools
 | `src/hal` | GPIO, radio power/reset, I2C resource, display/backlight, encoder/button, audio gating, battery ADC, and NVS access |
 | `src/drivers/si473x` | Chip commands and responses, AM/FM/SSB tuning, SSB patch loading, signal quality, reception settings, seek, and RDS decoding |
 | `src/radio` | Bands, mode constraints, tuning increments, per-band memories, frequency formatting, and versioned settings bytes |
-| `src/app` | Encoder focus, seek interaction, radio coordination, drawing, RDS presentation, and save scheduling |
+| `src/services` | Shared UTC device clock and local-time readings, independent of radio protocols |
+| `src/app` | Encoder focus, seek interaction, radio coordination, drawing, RDS presentation/clock adapter, and save scheduling |
 
 The SI473x driver receives a `TwoWire&`; it does not own board pins or power rails. The HAL powers and resets the chip before `begin()`. Encoder edges are accumulated in an interrupt; I2C and display work happen in the main loop.
 
@@ -57,7 +58,7 @@ The application draws a 320 × 170 RGB565 sprite and presents the complete frame
 
 | Region | Content |
 | --- | --- |
-| Top status bar | Band choices on the left; CT clock, brightness, volume, and battery on the right |
+| Top status bar | Band choices on the left; device clock, brightness, volume, and battery on the right |
 | Main area, x=8…311, y=22…67 | Frequency and unit, or RDS PS and RT/eRT text |
 | Controls at y=70 | Mode, BW, AGC/manual attenuation, and SM |
 | Signal row at y=91…107 | Equal-height RSSI bars, RSSI/SNR, VALID, AFC, RF gain, FM pilot, and Step |
@@ -85,7 +86,11 @@ Ordinary PS/RT decode printable ASCII; other bytes become `?`.
 
 CT is decoded only from group 4A. Its 17-bit UTC Modified Julian Day comes from B[1:0] and C[15:1]; the UTC hour comes from C[0] and D[15:12], the minute from D[11:6], and the signed half-hour local offset from D[5:0]. All required blocks must have BLE ≤ 2. Hours above 23, minutes above 59, and MJD outside 1–99999 are rejected; all-zero CT codes withdraw the clock. One valid group supplies a complete update, unlike multi-group PS/RT confirmation. Format reference: [NRSC-4-B, Figure 20](https://www.nrscstandards.org/standards-and-guidelines/documents/archive/nrsc-4-b-standard-2005.pdf).
 
-The driver exposes the broadcast value separately from presentation. `radio::Clock` applies its local offset and advances with unsigned `millis()` differences between distinct timestamps. Duplicate timestamps do not move the clock backwards or refresh the five-minute holdover limit. The status bar shows local `HH:MM` at x=152 beside brightness, and draws no clock when unavailable. UTC/local midnight rollover and `millis()` rollover are handled. Time is cleared on tuning, seek, reconfiguration, PI change, or a CT withdrawal, and is never saved to NVS or used to set the system clock.
+The driver exposes the raw broadcast value; [`app::RdsClockSync`](../src/app/rds_clock.h) converts MJD/minute to Unix UTC seconds before updating [`services::Clock`](../src/services/clock.h). Protocol details and station PI/sequence fields stay outside the shared clock service. Identical UTC timestamps are ignored across retransmissions and station changes; an offset-only update changes local time without resetting seconds. Invalid or withdrawn CT does not unset device time.
+
+The shared clock stores a UTC anchor, the monotonic synchronization instant, a separate offset in minutes, and the last synchronization source. `hal::monotonicMilliseconds()` uses ESP32's 64-bit timer, so the running time crosses 32-bit `millis()` boundaries without expiry. The UI reads only `Clock::read()` for local `HH:MM` at x=152 beside brightness. There is no radio-state gate: tuning, seek, mode/PI changes, reception loss, or errors leave the clock running indefinitely. The display remains blank only until the first synchronization after boot. Time is kept in RAM, not NVS, and is lost on restart/power loss.
+
+The common API is `synchronize(utcSeconds, source, monotonicMs)` plus `setUtcOffsetMinutes(offset)`. Future Wi-Fi NTP synchronization uses this same UTC field and UI reading; it does not require a second display clock. NTP input changes UTC without implicitly changing the offset. Wi-Fi/NTP networking is not implemented yet; tests simulate an NTP caller. Fresh updates currently use the same API with the most recent source recorded, without a source-priority policy. Synchronization calls belong to the application loop; future asynchronous network callbacks must deliver their updates to that owner.
 
 ### Enhanced RadioText
 
@@ -136,7 +141,7 @@ Host capture commands and the offline ruler renderer are described in [Developme
 | Band constraints, memories, and tuning transitions | [`model.h`](../src/radio/model.h), [`model.cpp`](../src/radio/model.cpp), [`tuning.h`](../src/drivers/si473x/tuning.h) |
 | Receiver state, focus, drawing, and save scheduling | [`receiver.cpp`](../src/app/receiver.cpp) |
 | Chip commands, patch, seek, FIFO, and signal readback | [`si473x.cpp`](../src/drivers/si473x/si473x.cpp), [`settings.h`](../src/drivers/si473x/settings.h) |
-| CT parsing and presentation clock | [`clock_time.h`](../src/drivers/si473x/clock_time.h), [`clock.h`](../src/radio/clock.h) |
+| CT parsing and device clock | [`clock_time.h`](../src/drivers/si473x/clock_time.h), [`rds_clock.h`](../src/app/rds_clock.h), [`clock.h`](../src/services/clock.h), [HAL timer](../src/hal/clock.h) |
 | PS/RT and eRT assembly | [`rds.h`](../src/drivers/si473x/rds.h), [`enhanced_radiotext.h`](../src/drivers/si473x/enhanced_radiotext.h) |
 | Settings format and storage | [`saved_settings.cpp`](../src/radio/saved_settings.cpp), [`settings_storage.cpp`](../src/hal/settings_storage.cpp) |
 | Battery interpretation | [`battery.cpp`](../src/hal/battery.cpp) |
