@@ -23,22 +23,23 @@ static const ui_theme_t dark = {
 };
 
 static const ui_theme_t light = {
-  .background = 0xFFFF,
-  .text_primary = 0x1082,
-  .text_secondary = 0x4208,
-  .text_muted = 0x6B4D,
-  .border_subtle = 0xC618,
-  .accent = 0x0410,
-  .control_focus = 0x8B60,
-  .control_disabled = 0x8C51,
-  .status_positive = 0x03C0,
-  .status_danger = 0xB800,
-  .status_notice = 0x8B60,
-  .audio_muted = 0xB800,
-  .audio_stereo = 0x0410,
-  .active = 0x5018,
-  .ruler_current = 0xB800,
-  .ruler_adjacent = 0x0410,
+  // Cool paper background; even muted/disabled text keeps >= 4.5:1 contrast.
+  .background = 0xFFDF,
+  .text_primary = 0x08A5,
+  .text_secondary = 0x320A,
+  .text_muted = 0x42AD,
+  .border_subtle = 0x7C53,
+  .accent = 0x034E,
+  .control_focus = 0x8A40,
+  .control_disabled = 0x63B1,
+  .status_positive = 0x1326,
+  .status_danger = 0xB8E3,
+  .status_notice = 0x8A40,
+  .audio_muted = 0xB8E3,
+  .audio_stereo = 0x034E,
+  .active = 0x6915,
+  .ruler_current = 0xB8E3,
+  .ruler_adjacent = 0x034E,
 };
 
 const ui_theme_t* ui_theme_get(ui_theme_id_t theme) {

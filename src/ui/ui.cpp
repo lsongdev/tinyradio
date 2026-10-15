@@ -36,6 +36,21 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color, bool muted, int volum
     for (int i = 0; i < waves; ++i) g.drawFastVLine(x + 10 + 2 * i, 9 - i, 3 + 2 * i, color);
   }
 }
+void drawStereo(lgfx::LGFXBase& g, int x, uint16_t color, int volume) {
+  // Same 15 x 11 pixel bounds as the mono speaker: x..x+14, y=5..15.
+  const int center = x + 7, waves = volume == 0 ? 0 : (volume + 20) / 21;
+  g.fillCircle(center, 10, 1, color);
+  for (int i = 0; i < waves; ++i) {
+    // Keep the outer wave at the full icon size; higher volume adds inner waves.
+    const int distance = 7 - 2 * i, height = 5 - 2 * i;
+    for (int side : {-1, 1}) {
+      const int edge = center + side * distance, tip = edge - side;
+      g.drawLine(tip, 10 - height, edge, 11 - height, color);
+      g.drawFastVLine(edge, 11 - height, 2 * height - 1, color);
+      g.drawLine(edge, 9 + height, tip, 10 + height, color);
+    }
+  }
+}
 void drawRuler(lgfx::LGFXBase& g, const radio_model_t& model, bool locked, const ui_theme_t& theme) {
   struct Tick { uint32_t hz, step; size_t band; int x; bool valid; const char* name; bool endpoint; };
   Tick ticks[27]{};
@@ -195,11 +210,14 @@ void ui_draw(const ui_view_t* view) {
   lgfx::LGFXBase& g = buffered ? static_cast<lgfx::LGFXBase&>(frame) : static_cast<lgfx::LGFXBase&>(board_display_device());
   g.fillScreen(theme.background); g.setFont(&fonts::Font0); g.setTextSize(1);
   if (!buffered) { extras_shown[0] = 0; spectrum_drawn = false; } // Direct drawing cleared the extras too.
-  // All bands remain visible in the left half of the single-line status bar.
+  // Only show bands supported by this board, without reserving empty slots.
+  int bandX = 3;
   for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) {
-    const int x = 3 + i * 28;
+    if (!radio_bands[i].available) continue;
+    const int x = bandX;
+    bandX += 28;
     const bool active = model.band == i;
-    const uint16_t color = !radio_bands[i].available ? theme.control_disabled : active ? (view->field == UI_FIELD_BAND ? theme.control_focus : theme.accent) : theme.text_secondary;
+    const uint16_t color = active ? (view->field == UI_FIELD_BAND ? theme.control_focus : theme.accent) : theme.text_secondary;
     g.drawRect(x, 2, 26, 17, color);
     g.setTextDatum(lgfx::textdatum_t::middle_center);
     g.setTextColor(active && view->band_locked ? theme.active : color, theme.background);
@@ -215,7 +233,8 @@ void ui_draw(const ui_view_t* view) {
   g.setCursor(206, 7); g.printf("%d%%", (view->brightness * 100 + 127) / 255);
   const uint16_t speakerColor = view->muted ? theme.audio_muted : !view->audio_status_known ? theme.text_muted :
                                 view->signal.stereo ? theme.audio_stereo : theme.text_secondary;
-  drawSpeaker(g, 232, speakerColor, view->muted, view->volume);
+  if (!view->muted && view->audio_status_known && view->signal.stereo) drawStereo(g, 232, speakerColor, view->volume);
+  else drawSpeaker(g, 232, speakerColor, view->muted, view->volume);
   color = view->field == UI_FIELD_VOLUME ? theme.control_focus : view->muted ? theme.audio_muted : theme.text_secondary;
   g.setTextColor(color, theme.background);
   g.setCursor(248, 7); g.printf("%d%%", (view->volume * 100 + 31) / 63);
@@ -300,6 +319,7 @@ void ui_draw(const ui_view_t* view) {
   const auto& signal = view->signal;
   const auto& reception = view->reception;
   const bool stable = !failed && !pending && signal.quality_known;
+  constexpr int rightControlX = 258, rightControlWidth = 59;
   const auto option = [&](ui_field_t focus, int x, int width, const char* label) {
     const bool smActive = focus == UI_FIELD_SOFT_MUTE && stable && reception.soft_mute_db && signal.soft_muted;
     const uint16_t ink = view->field == focus ? theme.control_focus : theme.accent;
@@ -315,33 +335,48 @@ void ui_draw(const ui_view_t* view) {
   if (reception.gain < 0) snprintf(label, sizeof label, "AGC AUTO"); else snprintf(label, sizeof label, "ATT %d", reception.gain);
   option(UI_FIELD_GAIN, 184, 70, label);
   if (!reception.soft_mute_db) snprintf(label, sizeof label, "SM OFF"); else snprintf(label, sizeof label, "SM %udB", reception.soft_mute_db);
-  option(UI_FIELD_SOFT_MUTE, 258, 59, label);
+  option(UI_FIELD_SOFT_MUTE, rightControlX, rightControlWidth, label);
   g.setTextDatum(lgfx::textdatum_t::top_left);
+  constexpr int signalLeft = 6, signalRight = rightControlX - 6, signalBarsWidth = 29;
   const int bars = stable ? constrain((signal.rssi + 5) / 6, 0, 10) : 0;
   for (int i = 0; i < 10; ++i)
-    g.fillRect(8 + i * 3, 95, 2, 8, i < bars ? theme.status_positive : theme.border_subtle);
-  g.setTextColor(theme.text_secondary, theme.background); g.setCursor(42, 95);
-  if (stable) g.printf("%udBuV", signal.rssi); else g.print("--dBuV");
-  g.setCursor(90, 95); if (stable) g.printf("SN%udB", signal.snr); else g.print("SN--dB");
-  g.setCursor(138, 95);
-  g.setTextColor(failed ? theme.status_danger : stable && signal.valid ? theme.status_positive : theme.text_muted, theme.background);
-  if (failed) g.print("ERROR");
-  else if (pending) g.print(view->seeking ? "SEEK" : "TUNING");
-  else if (stable) g.print(signal.valid ? "VALID" : "INVALID"); else g.print("--");
+    g.fillRect(signalLeft + i * 3, 95, 2, 8, i < bars ? theme.status_positive : theme.border_subtle);
+  char rssi[16], snr[16], gain[12], pilot[8];
+  if (stable) {
+    snprintf(rssi, sizeof rssi, "%udBuV", signal.rssi); snprintf(snr, sizeof snr, "SN%udB", signal.snr);
+    snprintf(gain, sizeof gain, "RF%u", signal.gain_index); snprintf(pilot, sizeof pilot, "P%u", signal.pilot);
+  } else {
+    snprintf(rssi, sizeof rssi, "--dBuV"); snprintf(snr, sizeof snr, "SN--dB");
+    snprintf(gain, sizeof gain, "RF--"); snprintf(pilot, sizeof pilot, "P--");
+  }
+  const char* status = failed ? "ERROR" : pending ? (view->seeking ? "SEEK" : "TUNING") :
+                       stable ? (signal.valid ? "VALID" : "INVALID") : "--";
+  const struct { const char* text; uint16_t color; } readings[] = {
+    {rssi, theme.text_secondary}, {snr, theme.text_secondary},
+    {status, failed ? theme.status_danger : stable && signal.valid ? theme.status_positive : theme.text_muted},
+    {!stable ? "AFC --" : signal.afc_rail ? "AFC!" : "AFC OK", stable && signal.afc_rail ? theme.status_danger : theme.text_secondary},
+    {gain, theme.text_secondary}, {pilot, theme.text_secondary},
+  };
+  const int readingCount = band->fm ? 6 : 5;
+  int textWidth = 0;
+  for (int i = 0; i < readingCount; ++i) textWidth += g.textWidth(readings[i].text);
+  // Distribute the remaining pixels evenly, including the gap after the bars.
+  // Measuring the labels also accommodates INVALID, pending values and AM's missing pilot.
+  const int freeSpace = signalRight - signalLeft - signalBarsWidth - textWidth;
+  const int gap = freeSpace / readingCount, remainder = freeSpace % readingCount;
+  int x = signalLeft + signalBarsWidth;
+  for (int i = 0; i < readingCount; ++i) {
+    x += gap + (i < remainder ? 1 : 0);
+    g.setTextColor(readings[i].color, theme.background); g.setCursor(x, 95); g.print(readings[i].text);
+    x += g.textWidth(readings[i].text);
+  }
 
   const uint16_t stepInk = view->field == UI_FIELD_STEP ? theme.control_focus : theme.accent;
-  g.drawRect(278, 91, 39, 17, stepInk); g.setTextColor(stepInk, theme.background);
+  g.drawRect(rightControlX, 91, rightControlWidth, 17, stepInk); g.setTextColor(stepInk, theme.background);
   g.setTextDatum(lgfx::textdatum_t::middle_center);
   if (step >= 1000) snprintf(label, sizeof label, "%lukHz", static_cast<unsigned long>(step / 1000));
   else snprintf(label, sizeof label, "%luHz", static_cast<unsigned long>(step));
-  g.drawString(label, 297, 99); g.setTextDatum(lgfx::textdatum_t::top_left);
-  g.setTextColor(stable && signal.afc_rail ? theme.status_danger : theme.text_secondary, theme.background); g.setCursor(186, 95);
-  g.print(!stable ? "AFC --" : signal.afc_rail ? "AFC!" : "AFC OK");
-  g.setTextColor(theme.text_secondary, theme.background); g.setCursor(228, 95);
-  if (stable) g.printf("RF%u", signal.gain_index); else g.print("RF--");
-  if (band->fm) {
-    g.setCursor(258, 95); if (stable) g.printf("P%u", signal.pilot); else g.print("P--");
-  }
+  g.drawString(label, rightControlX + rightControlWidth / 2, 99); g.setTextDatum(lgfx::textdatum_t::top_left);
   if (failed) { g.setTextColor(theme.status_danger, theme.background); g.setCursor(8, 115); g.print(view->error); }
   else if (view->notice) { g.setTextColor(theme.status_notice, theme.background); g.setCursor(8, 115); g.print(view->notice); }
   drawRuler(g, model, view->band_locked, theme);
