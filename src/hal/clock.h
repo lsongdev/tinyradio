@@ -1,6 +1,5 @@
 #pragma once
-#include <stdint.h>
 #include <esp_timer.h>
-namespace hal {
-inline uint64_t monotonicMilliseconds() { return uint64_t(esp_timer_get_time()) / 1000; }
-}
+#include <stdint.h>
+// 64-bit monotonic time since boot; does not wrap like millis().
+static inline uint64_t hal_monotonic_ms(void) { return (uint64_t)esp_timer_get_time() / 1000; }

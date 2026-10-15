@@ -16,13 +16,17 @@ This document explains how the current firmware works. Build, diagnostics, tools
 
 | Layer | Responsibility |
 | --- | --- |
-| `src/hal` | GPIO, radio power/reset, I2C resource, display/backlight, encoder/button, audio gating, battery ADC, and NVS access |
-| `src/drivers/si473x` | Chip commands and responses, AM/FM/SSB tuning, SSB patch loading, signal quality, reception settings, seek, and RDS decoding |
+| `src/hal` | Board-independent ESP32 pieces: debounced button, interrupt encoder, I2C master port, NVS settings blob, serial console, 64-bit monotonic time |
+| `src/boards/<name>` | One directory per board: GPIO map, audio mute/amplifier, battery ADC, radio rail/reset/I2C, input wiring, and the LovyanGFX panel |
+| `src/drivers/si473x` | Chip commands and responses, AM/FM/SSB tuning, SSB patch loading, signal quality, reception settings, seek, and RDS/eRT/CT decoding |
 | `src/radio` | Bands, mode constraints, tuning increments, per-band memories, frequency formatting, and versioned settings bytes |
 | `src/services` | Shared UTC device clock and local-time readings, independent of radio protocols |
-| `src/app` | Encoder focus, seek interaction, radio coordination, drawing, RDS presentation/clock adapter, and save scheduling |
+| `src/ui` | Screen layout and drawing from a plain `ui_view_t` snapshot; framebuffer and screenshot export |
+| `src/app` | Encoder focus, seek interaction, radio coordination, RDS presentation/clock adapter, save scheduling, and serial diagnostics |
 
-The SI473x driver receives a `TwoWire&`; it does not own board pins or power rails. The HAL powers and resets the chip before `begin()`. Encoder edges are accumulated in an interrupt; I2C and display work happen in the main loop.
+Every layer is C with plain structs and functions. C++ is confined to the files that use C++-only dependencies (LovyanGFX, Arduino `Serial`, Arduino's `setup`/`loop`); see [Development](development.md#languages). Lower layers never include upper ones: `hal` and `drivers` know nothing about boards, radio policy, or UI, and `ui` reads state only through `ui_view_t`.
+
+The SI473x driver receives an `si473x_bus_t` (write/read callbacks plus context); it does not own board pins or power rails. The board powers and resets the chip before `si473x_begin()` and supplies its `hal_i2c_t` as the bus. Encoder edges are accumulated in an interrupt; I2C and display work happen in the main loop.
 
 ## Frequency model
 
@@ -86,7 +90,7 @@ Ordinary PS/RT decode printable ASCII; other bytes become `?`.
 
 CT is decoded only from group 4A. Its 17-bit UTC Modified Julian Day comes from B[1:0] and C[15:1]; the UTC hour comes from C[0] and D[15:12], the minute from D[11:6], and the signed half-hour local offset from D[5:0]. All required blocks must have BLE ≤ 2. Hours above 23, minutes above 59, and MJD outside 1–99999 are rejected; all-zero CT codes withdraw the clock. One valid group supplies a complete update, unlike multi-group PS/RT confirmation. Format reference: [NRSC-4-B, Figure 20](https://www.nrscstandards.org/standards-and-guidelines/documents/archive/nrsc-4-b-standard-2005.pdf).
 
-The driver exposes the raw broadcast value; [`app::RdsClockSync`](../src/app/rds_clock.h) converts MJD/minute to Unix UTC seconds before updating [`services::Clock`](../src/services/clock.h). Protocol details and station PI/sequence fields stay outside the shared clock service. Identical UTC timestamps are ignored across retransmissions and station changes; an offset-only update changes local time without resetting seconds. Invalid or withdrawn CT does not unset device time.
+The driver exposes the raw broadcast value; [`rds_clock_sync_update()`](../src/app/rds_clock.c) converts MJD/minute to Unix UTC seconds before updating the [device clock](../src/services/device_clock.c). Protocol details and station PI/sequence fields stay outside the shared clock service. Identical UTC timestamps are ignored across retransmissions and station changes; an offset-only update changes local time without resetting seconds. Invalid or withdrawn CT does not unset device time.
 
 The shared clock stores a UTC anchor, the monotonic synchronization instant, a separate offset in minutes, and the last synchronization source. `hal::monotonicMilliseconds()` uses ESP32's 64-bit timer, so the running time crosses 32-bit `millis()` boundaries without expiry. The UI reads only `Clock::read()` for local `HH:MM` at x=152 beside brightness. There is no radio-state gate: tuning, seek, mode/PI changes, reception loss, or errors leave the clock running indefinitely. The display remains blank only until the first synchronization after boot. Time is kept in RAM, not NVS, and is lost on restart/power loss.
 
@@ -110,13 +114,13 @@ Frequency and its adjacent unit use the same bold `efontCN_24_b` as RDS; the num
 
 After two seconds without changes, and when tuning/seek has completed, the application saves current band, per-band frequency/mode/step, per-mode BW/AGC/SM, volume, brightness, and mute. Focus and seek state are not persisted: startup focuses Frequency in manual tuning mode.
 
-NVS access lives in `src/hal/settings_storage.*`. `src/radio/saved_settings.*` encodes a 96-byte record with explicit little-endian fields, version, band count, and CRC32. It validates values before applying them; unsupported or corrupt records fall back to defaults. No C++ struct padding or internal step indices are stored. Unchanged settings are not rewritten; failed writes retry after ten seconds. Updates preserve compatible NVS records.
+NVS access lives in `src/hal/settings_storage.*`, under the board's namespace (`ats-mini` for this board). `src/radio/saved_settings.*` encodes a 96-byte record with explicit little-endian fields, version, band count, and CRC32. It validates values before applying them; unsupported or corrupt records fall back to defaults. No C struct padding or internal step indices are stored. Unchanged settings are not rewritten; failed writes retry after ten seconds. Updates preserve compatible NVS records.
 
 Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, unmuted, BW AUTO, AGC AUTO, and FM SM 16 dB. AM defaults to 3 kHz BW with SM off; LSB/USB default to 2.2 kHz BW with SM off. Changes made within the final two seconds before power removal may be lost.
 
 ## Battery interpretation
 
-The HAL averages 32 calibrated `analogReadMilliVolts()` readings with 11 dB attenuation, then computes `volts = ADC_millivolts × 2 × batteryCalibration / 1000`. The software defaults to a calibration factor of 1.0. Readings outside 2.5–5.5 V are implausible; values above 4.35 V indicate suspected external power. This threshold is a heuristic, not USB connection detection. Battery percentage is `int((volts - 3.2) × 100)`, clamped to 0–100.
+The board averages 32 calibrated `analogReadMilliVolts()` readings with 11 dB attenuation, then computes `volts = ADC_millivolts × 2 × BATTERY_CALIBRATION / 1000`. The software defaults to a calibration factor of 1.0. Readings outside 2.5–5.5 V are implausible; values above 4.35 V indicate suspected external power. This threshold is a heuristic, not USB connection detection. Battery percentage is `int((volts - 3.2) × 100)`, clamped to 0–100.
 
 The UI shows `--%` for an implausible reading and a full cyan battery with `USB` for suspected external power. The full icon does not mean the cell is charged. The measured supply node is described in [Hardware facts](hardware.md#battery-indication); calibration instructions are in [Development](development.md#battery-calibration).
 
@@ -138,12 +142,13 @@ Host capture commands and the offline ruler renderer are described in [Developme
 
 | Topic | Code |
 | --- | --- |
-| Band constraints, memories, and tuning transitions | [`model.h`](../src/radio/model.h), [`model.cpp`](../src/radio/model.cpp), [`tuning.h`](../src/drivers/si473x/tuning.h) |
-| Receiver state, focus, drawing, and save scheduling | [`receiver.cpp`](../src/app/receiver.cpp) |
-| Chip commands, patch, seek, FIFO, and signal readback | [`si473x.cpp`](../src/drivers/si473x/si473x.cpp), [`settings.h`](../src/drivers/si473x/settings.h) |
-| CT parsing and device clock | [`clock_time.h`](../src/drivers/si473x/clock_time.h), [`rds_clock.h`](../src/app/rds_clock.h), [`clock.h`](../src/services/clock.h), [HAL timer](../src/hal/clock.h) |
-| PS/RT and eRT assembly | [`rds.h`](../src/drivers/si473x/rds.h), [`enhanced_radiotext.h`](../src/drivers/si473x/enhanced_radiotext.h) |
-| Settings format and storage | [`saved_settings.cpp`](../src/radio/saved_settings.cpp), [`settings_storage.cpp`](../src/hal/settings_storage.cpp) |
-| Battery interpretation | [`battery.cpp`](../src/hal/battery.cpp) |
+| Band constraints, memories, and tuning transitions | [`model.h`](../src/radio/model.h), [`model.c`](../src/radio/model.c), [`tuning.h`](../src/drivers/si473x/tuning.h) |
+| Receiver state, focus, and save scheduling | [`receiver.c`](../src/app/receiver.c) |
+| Screen layout and drawing | [`ui.h`](../src/ui/ui.h), [`ui.cpp`](../src/ui/ui.cpp) |
+| Chip commands, patch, seek, FIFO, and signal readback | [`si473x.c`](../src/drivers/si473x/si473x.c), [`settings.h`](../src/drivers/si473x/settings.h) |
+| CT parsing and device clock | [`clock_time.h`](../src/drivers/si473x/clock_time.h), [`rds_clock.c`](../src/app/rds_clock.c), [`device_clock.c`](../src/services/device_clock.c), [HAL timer](../src/hal/clock.h) |
+| PS/RT and eRT assembly | [`rds.c`](../src/drivers/si473x/rds.c), [`enhanced_radiotext.c`](../src/drivers/si473x/enhanced_radiotext.c) |
+| Settings format and storage | [`saved_settings.c`](../src/radio/saved_settings.c), [`settings_storage.c`](../src/hal/settings_storage.c) |
+| Battery interpretation | [`board.c`](../src/boards/ats_mini/board.c) |
 
 Protocol references: [Skyworks AN332](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/application-notes/AN332.pdf), [PU2CLR SSB interfaces](https://pu2clr.github.io/SI4735/extras/apidoc/html/group__group17.html), and [community BFO implementation](https://github.com/esp32-si4732/ats-mini/blob/ab4f5dc8120767cbb134b70096929f74c49df3e7/ats-mini/ats-mini.ino).

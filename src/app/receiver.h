@@ -1,5 +1,3 @@
 #pragma once
-namespace app {
-void beginReceiver();
-void updateReceiver();
-}
+void receiver_begin(void);
+void receiver_update(void);

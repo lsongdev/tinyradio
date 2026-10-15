@@ -1,78 +1,58 @@
 #pragma once
-#include <Wire.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include "drivers/i2c_bus.h"
 #include "tuning.h"
 #include "rds.h"
 #include "settings.h"
-namespace drivers {
-enum class Error : uint8_t { None, NoDevice, Bus, Timeout, Command, Frequency, Patch };
-enum class SeekResult : uint8_t { None, Searching, Found, Limit, Cancelled, Timeout };
-struct Signal {
-  uint8_t rssi, snr; bool valid, stereo;
-  uint8_t blend, gainIndex;
-  bool pilot, softMuted, afcRail, agcEnabled, qualityKnown;
-};
-struct RdsStatus { bool synchronized = false; uint8_t queued = 0; uint32_t groups = 0, overruns = 0; };
-struct Revision { uint8_t part, major, minor, componentMajor, componentMinor, chip; uint16_t patch; };
-class Si473x {
-public:
-  explicit Si473x(TwoWire& bus) : bus_(bus) {}
-  // HAL must power and reset the device before begin(). Detects both addresses.
-  bool begin();
-  bool configure(Mode mode, uint8_t volume);
-  bool tune(uint32_t frequencyHz);
-  bool seek(bool up, uint32_t lowerHz, uint32_t upperHz, uint32_t spacingHz);
-  bool cancelSeek();
-  bool seeking() const { return seeking_; }
-  SeekResult seekResult() const { return seekResult_; }
-  bool poll(); // Nonblocking STC polling; confirmed frequency updated on completion.
-  bool readSignal();
-  bool readRds();
-  const RdsStatus& rdsStatus() const { return rdsStatus_; }
-  const RdsClockTime& rdsClockTime() const { return rds_.clockTime(); }
-  const char* rdsPs() const { return rds_.text(); }
-  const char* rdsText() const { return rds_.radioText(); }
-  const char* rdsEnhancedText() const { return rds_.enhancedText(); }
-  int rdsEnhancedGroup() const { return rds_.enhancedGroup(); }
-  uint16_t rdsEnhancedFlags() const { return rds_.enhancedFlags(); }
-  bool setReception(const ReceptionSettings& settings);
-  bool setVolume(uint8_t volume);
-  bool setMuted(bool muted);
-  Error error() const { return error_; }
-  const char* errorText() const;
-  uint8_t address() const { return address_; }
-  Mode mode() const { return mode_; }
-  bool tuning() const { return tuning_; }
-  bool configured() const { return configured_; }
-  uint32_t frequencyHz() const { return confirmedHz_; }
-  const Signal& signal() const { return signal_; }
-  uint32_t bandwidthHz() const { return bandwidthHz_; }
-  const Revision& revision() const { return revision_; }
-private:
-  bool read(uint8_t* response, uint8_t size);
-  bool waitReady(uint32_t timeout = 500);
-  bool command(const uint8_t* bytes, uint8_t size, uint8_t* response = nullptr, uint8_t responseSize = 0);
-  bool property(uint16_t id, uint16_t value);
-  bool powerUp(uint8_t function);
-  bool loadSsb();
-  bool getRevision();
-  bool pollSeek();
-  bool seekStatus(bool cancel, bool acknowledge);
-  bool fail(Error error);
-  bool clearRds();
-  TwoWire& bus_;
-  uint8_t address_ = 0;
-  Error error_ = Error::None;
-  Mode mode_ = Mode::FM;
-  bool powered_ = false, configured_ = false, tuning_ = false;
-  bool carrierKnown_ = false, seeking_ = false;
-  SeekResult seekResult_ = SeekResult::None;
-  uint32_t seekLowerHz_ = 0, seekUpperHz_ = 0;
-  uint16_t carrier_ = 0;
-  uint32_t requestedHz_ = 0, confirmedHz_ = 0, tuneStarted_ = 0, lastPoll_ = 0;
-  Signal signal_{};
-  Revision revision_{};
-  RdsDecoder rds_;
-  RdsStatus rdsStatus_{};
-  uint32_t bandwidthHz_ = 0;
-};
-}
+typedef enum {
+  SI473X_OK, SI473X_NO_DEVICE, SI473X_BUS_ERROR, SI473X_TIMEOUT,
+  SI473X_COMMAND_ERROR, SI473X_BAD_FREQUENCY, SI473X_PATCH_ERROR
+} si473x_error_t;
+typedef enum {
+  SI473X_SEEK_NONE, SI473X_SEEK_SEARCHING, SI473X_SEEK_FOUND,
+  SI473X_SEEK_LIMIT, SI473X_SEEK_CANCELLED, SI473X_SEEK_TIMEOUT
+} si473x_seek_result_t;
+typedef struct {
+  uint8_t rssi, snr;
+  bool valid, stereo;
+  uint8_t blend, gain_index;
+  bool pilot, soft_muted, afc_rail, agc_enabled, quality_known;
+} si473x_signal_t;
+typedef struct { bool synchronized; uint8_t queued; uint32_t groups, overruns; } si473x_rds_status_t;
+typedef struct { uint8_t part, major, minor, component_major, component_minor, chip; uint16_t patch; } si473x_revision_t;
+// Fields after `log` are driver state: read them, never write them.
+typedef struct {
+  i2c_bus_t bus;
+  void (*log)(const char* line); // Optional diagnostics, without a trailing newline.
+  uint8_t address;
+  si473x_error_t error;
+  si473x_mode_t mode;
+  bool powered, configured, tuning, seeking, carrier_known;
+  si473x_seek_result_t seek_result;
+  uint32_t seek_lower_hz, seek_upper_hz;
+  uint16_t carrier;
+  uint32_t requested_hz, confirmed_hz, tune_started, last_poll;
+  uint32_t bandwidth_hz;
+  si473x_signal_t signal;
+  si473x_revision_t revision;
+  rds_decoder_t rds;
+  si473x_rds_status_t rds_status;
+} si473x_t;
+
+void si473x_init(si473x_t* chip, i2c_bus_t bus);
+// The board must power and reset the device before begin(). Detects both addresses.
+bool si473x_begin(si473x_t* chip);
+bool si473x_configure(si473x_t* chip, si473x_mode_t mode, uint8_t volume);
+bool si473x_tune(si473x_t* chip, uint32_t hz);
+bool si473x_seek(si473x_t* chip, bool up, uint32_t lower_hz, uint32_t upper_hz, uint32_t spacing_hz);
+bool si473x_cancel_seek(si473x_t* chip);
+// Nonblocking STC polling; confirmed_hz is updated on completion.
+bool si473x_poll(si473x_t* chip);
+bool si473x_read_signal(si473x_t* chip);
+bool si473x_read_rds(si473x_t* chip);
+bool si473x_set_reception(si473x_t* chip, const si473x_reception_t* settings);
+bool si473x_set_volume(si473x_t* chip, uint8_t volume);
+bool si473x_set_muted(si473x_t* chip, bool muted);
+const char* si473x_error_text(const si473x_t* chip);

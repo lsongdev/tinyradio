@@ -1,16 +1,11 @@
 #pragma once
+#include <stdbool.h>
 #include <stdint.h>
-namespace hal {
-struct BatteryReading {
-  uint32_t adcMillivolts;
+// Board-independent supply reading; each board decides how to measure it.
+typedef struct {
+  uint32_t adc_millivolts;
   float volts;
-  uint8_t estimatedPercent;
-  bool externalPowerLikely;
+  uint8_t estimated_percent;
+  bool external_power_likely;
   bool plausible;
-};
-class Battery {
-public:
-  void begin();
-  BatteryReading read() const;
-};
-}
+} hal_battery_reading_t;
