@@ -106,6 +106,7 @@ At 115200 baud, commands are single characters without a required newline. `?` a
 | `ctmjd`, `ctutc`, `ctoffset` | Latest raw CT sample: UTC MJD, UTC minutes since midnight, and signed local offset; these reset when the radio invalidates station data |
 | `rdssync`, `rdsfifo` | Current synchronization and last queried FIFO depth |
 | `rdsgroups`, `rdsoverruns` | Groups read and overruns observed since the last RDS invalidation |
+| `theme` | Current color theme: `dark` or `light` |
 | `stored`, `save`, `writes` | Valid stored settings, pending save, and successful writes this boot |
 | `supply`, `adc` | Calibrated supply estimate in volts, and averaged pin reading in millivolts |
 

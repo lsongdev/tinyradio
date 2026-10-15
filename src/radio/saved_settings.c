@@ -42,8 +42,9 @@ bool radio_settings_encode(const radio_settings_t* settings, uint8_t bytes[RADIO
   if (!valid(settings)) return false;
   memset(bytes, 0, RADIO_SETTINGS_SIZE);
   bytes[0] = 'A'; bytes[1] = 'T'; bytes[2] = 'S'; bytes[3] = 'M';
-  bytes[4] = 1; bytes[5] = RADIO_BAND_COUNT; bytes[6] = 4; bytes[7] = (uint8_t)settings->tuning.band;
+  bytes[4] = 2; bytes[5] = RADIO_BAND_COUNT; bytes[6] = 4; bytes[7] = (uint8_t)settings->tuning.band;
   bytes[8] = settings->volume; bytes[9] = settings->brightness; bytes[10] = settings->muted;
+  bytes[11] = settings->light_theme;
   for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) {
     uint8_t* p = bytes + 16 + i * 12; const radio_band_memory_t* memory = &settings->tuning.memories[i];
     p[0] = (uint8_t)memory->mode; put32(p + 4, memory->frequency_hz); put32(p + 8, memory->step_hz);
@@ -56,12 +57,14 @@ bool radio_settings_encode(const radio_settings_t* settings, uint8_t bytes[RADIO
   return true;
 }
 bool radio_settings_decode(const uint8_t bytes[RADIO_SETTINGS_SIZE], radio_settings_t* settings) {
-  if (bytes[0] != 'A' || bytes[1] != 'T' || bytes[2] != 'S' || bytes[3] != 'M' || bytes[4] != 1 ||
+  if (bytes[0] != 'A' || bytes[1] != 'T' || bytes[2] != 'S' || bytes[3] != 'M' || (bytes[4] != 1 && bytes[4] != 2) ||
       bytes[5] != RADIO_BAND_COUNT || bytes[6] != 4 || bytes[10] > 1 ||
+      (bytes[4] == 2 && bytes[11] > 1) ||
       get32(bytes + RADIO_SETTINGS_SIZE - 4) != crc(bytes)) return false;
   radio_settings_t candidate;
   radio_settings_default(&candidate);
   candidate.tuning.band = bytes[7]; candidate.volume = bytes[8]; candidate.brightness = bytes[9]; candidate.muted = bytes[10];
+  candidate.light_theme = bytes[4] == 2 && bytes[11];
   for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) {
     const uint8_t* p = bytes + 16 + i * 12;
     radio_band_memory_t* memory = &candidate.tuning.memories[i];

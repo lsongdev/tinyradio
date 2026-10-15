@@ -52,7 +52,7 @@ Tuning polls STC without blocking the application for the entire operation. A tu
 
 ### Seek
 
-A 650 ms long-press on Frequency toggles seek mode, indicated in magenta. Rotation starts a search in the corresponding direction. Seek stays within the current band, with wrap disabled; repeated turns in the same direction do not queue station skips. Short-press cancels search, adopts the chip's reported frequency, and returns to manual tuning. RDS text remains visible while seek mode is idle; active tuning/search hides previous-station text. SSB seek is unavailable. Seek status is polled every 100 ms, with a 30-second timeout.
+A 650 ms long-press on Frequency toggles seek mode, indicated by the theme's active-state color. Rotation starts a search in the corresponding direction. Seek stays within the current band, with wrap disabled; repeated turns in the same direction do not queue station skips. Short-press cancels search, adopts the chip's reported frequency, and returns to manual tuning. RDS text remains visible while seek mode is idle; active tuning/search hides previous-station text. SSB seek is unavailable. Seek status is polled every 100 ms, with a 30-second timeout.
 
 ### Reception settings
 
@@ -70,11 +70,11 @@ The application draws a 320 × 170 RGB565 sprite and presents the complete frame
 | Signal row at y=91…107 | Equal-height RSSI bars, RSSI/SNR, VALID, AFC, RF gain, FM pilot, and Step |
 | Bottom scale | Continuous ruler, band-boundary labels, red cursor, and current frequency |
 
-Yellow indicates encoder focus; cyan indicates active choices; disabled options are gray. Seek uses magenta. Soft mute engagement changes the SM text to orange while retaining the normal/focused border color.
+The 16 semantic color tokens and both RGB565 palettes live in [`src/ui/theme.c`](../src/ui/theme.c), with their C interface in [`theme.h`](../src/ui/theme.h). The shared `accent` token sets the brand color of selected controls, normal enabled control borders, and spectrum bars. Unselected control text stays neutral; unselected band borders stay gray. Focused and disabled controls retain their state colors. Dark mode uses yellow for focus, cyan for the accent, and gray for disabled options. Light mode uses darker foregrounds on white. The shared `active` token (magenta in dark mode, purple in light mode) represents seek mode/direction, band lock, engaged soft mute, and external power. Band lock and soft mute override only text color, retaining the focus/accent border. Long-pressing Brightness switches themes without changing backlight brightness. Each view carries the theme; a theme change invalidates the extras cache even when telemetry and spectrum values have not changed. The UI paints the initial theme background before the application enables the backlight.
 
-Detected USB power is shown as a full cyan battery icon with `USB` instead of a percentage. Implausible voltage readings retain `--%`; battery-powered percentage is an estimate.
+Detected USB power is shown as a full battery icon in the active-state color with `USB` instead of a percentage. Implausible voltage readings retain `--%`; battery-powered percentage is an estimate.
 
-The volume icon is gray for mono, cyan for stereo blend, dark gray while quality is unknown, and red with a cross when muted. Its zero-to-three wave lines represent volume. Volume focus turns the percentage yellow without hiding the mono/stereo color.
+In dark mode, the volume icon is light gray for mono, cyan for stereo blend, dark gray while quality is unknown, and red with a cross when muted. Light mode uses the corresponding theme tokens. Its zero-to-three wave lines represent volume. Volume focus highlights the percentage without hiding the mono/stereo color.
 
 The ruler advances in 12-pixel minor divisions. Between adjacent bands, decorative positions reserve five minor divisions from the last frequency to the departing band name, one division between band names, and five divisions to the next frequency. Only the two name markers and actual frequency ticks are drawn. Decorative positions have no tunable frequency: crossing bands remains one encoder step. The red cursor's label always shows the actual frequency, including when RDS occupies the main area.
 
@@ -114,17 +114,17 @@ Frequency and its adjacent unit use the same bold `efontCN_24_b` as RDS; the num
 
 ## Persistence
 
-After two seconds without changes, and when tuning/seek has completed, the application saves current band, per-band frequency/mode/step, per-mode BW/AGC/SM, volume, brightness, and mute. Focus and seek state are not persisted: startup focuses Frequency in manual tuning mode.
+After two seconds without changes, and when tuning/seek has completed, the application saves current band, per-band frequency/mode/step, per-mode BW/AGC/SM, volume, brightness, mute, and theme. Focus and seek state are not persisted: startup focuses Frequency in manual tuning mode.
 
-NVS access lives in `src/hal/settings_storage.*`, under the board's namespace (`ats-mini` for this board). `src/radio/saved_settings.*` encodes a 96-byte record with explicit little-endian fields, version, band count, and CRC32. It validates values before applying them; unsupported or corrupt records fall back to defaults. No C struct padding or internal step indices are stored. Unchanged settings are not rewritten; failed writes retry after ten seconds. Updates preserve compatible NVS records.
+NVS access lives in `src/hal/settings_storage.*`, under the board's namespace (`ats-mini` for this board). `src/radio/saved_settings.*` encodes a 96-byte record with explicit little-endian fields, version, band count, and CRC32. Version 2 stores the theme in header byte 11; version 1 remains readable and defaults to dark. It validates values before applying them; unsupported or corrupt records fall back to defaults. No C struct padding or internal step indices are stored. Unchanged settings are not rewritten; failed writes retry after ten seconds. Updates preserve compatible NVS records.
 
-Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, unmuted, BW AUTO, AGC AUTO, and FM SM 16 dB. AM defaults to 3 kHz BW with SM off; LSB/USB default to 2.2 kHz BW with SM off. Changes made within the final two seconds before power removal may be lost.
+Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, dark theme, unmuted, BW AUTO, AGC AUTO, and FM SM 16 dB. AM defaults to 3 kHz BW with SM off; LSB/USB default to 2.2 kHz BW with SM off. Changes made within the final two seconds before power removal may be lost.
 
 ## Battery interpretation
 
 The board averages 32 calibrated `analogReadMilliVolts()` readings with 11 dB attenuation, then computes `volts = ADC_millivolts × 2 × BATTERY_CALIBRATION / 1000`. The software defaults to a calibration factor of 1.0. Readings outside 2.5–5.5 V are implausible; values above 4.35 V indicate suspected external power. This threshold is a heuristic, not USB connection detection. Battery percentage is `int((volts - 3.2) × 100)`, clamped to 0–100.
 
-The UI shows `--%` for an implausible reading and a full cyan battery with `USB` for suspected external power. The full icon does not mean the cell is charged. The measured supply node is described in [Hardware facts](hardware-ats.md#battery-indication); calibration instructions are in [Development](development.md#battery-calibration).
+The UI shows `--%` for an implausible reading and a full battery in the active-state color with `USB` for suspected external power. The full icon does not mean the cell is charged. The measured supply node is described in [Hardware facts](hardware-ats.md#battery-indication); calibration instructions are in [Development](development.md#battery-calibration).
 
 ## Full-screen capture
 

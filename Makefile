@@ -1,4 +1,4 @@
-# TinyRadio build entry points; CI runs the same targets.
+# tinyradio build entry points; CI runs the same targets.
 #   make                          build every board
 #   make test                     host tests
 #   make package                  build and package every board into dist/

@@ -165,7 +165,7 @@ bool si473x_configure(si473x_t* chip, si473x_mode_t mode, uint8_t volume) {
   }
   chip->mode = mode; chip->bandwidth_hz = mode == SI473X_FM ? 0 : si473x_is_ssb(mode) ? 2200 : 3000;
   chip->carrier_known = false; chip->confirmed_hz = 0;
-  if (!si473x_set_volume(chip, volume) || !si473x_set_muted(chip, false)) return false;
+  if (!si473x_set_volume(chip, volume) || !si473x_set_muted(chip, true)) return false;
   chip->configured = true;
   return true;
 }

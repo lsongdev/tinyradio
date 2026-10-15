@@ -27,8 +27,8 @@ void board_display_set_brightness(uint8_t value);
 // Backlight off (held through deep sleep) and panel asleep; used by board_power_off().
 void board_display_sleep(void);
 
-// No dedicated mute line: the SI4732 mutes itself. The amplifier is switched
-// through the XL9555.
+// No dedicated mute line: board_audio_set_muted() is a no-op. The application
+// must also mute the SI4732. The amplifier is switched through the XL9555.
 void board_audio_set_muted(bool muted);
 void board_speaker_set_enabled(bool enabled);
 

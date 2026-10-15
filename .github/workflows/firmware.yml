@@ -76,7 +76,7 @@ jobs:
           fi
           day=$(date +%F)
           tag="daily-$day"
-          title="TinyRadio daily build $day"
+          title="tinyradio daily build $day"
           cat > notes.md <<EOF_NOTES
           Firmware for SI4732 receivers, one set of files per board:
 

@@ -46,6 +46,7 @@ typedef struct {
 void si473x_init(si473x_t* chip, i2c_bus_t bus);
 // The board must power and reset the device before begin(). Detects both addresses.
 bool si473x_begin(si473x_t* chip);
+// Leaves audio muted; unmute explicitly after tuning is confirmed.
 bool si473x_configure(si473x_t* chip, si473x_mode_t mode, uint8_t volume);
 bool si473x_tune(si473x_t* chip, uint32_t hz);
 bool si473x_seek(si473x_t* chip, bool up, uint32_t lower_hz, uint32_t upper_hz, uint32_t spacing_hz);

@@ -6,7 +6,7 @@
 typedef struct {
   radio_state_t tuning;
   uint8_t volume, brightness;
-  bool muted;
+  bool muted, light_theme;
   si473x_reception_t reception[4]; // Indexed by si473x_mode_t.
 } radio_settings_t;
 // Explicit, versioned bytes; never persist C struct padding or enum layout.

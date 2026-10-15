@@ -98,6 +98,7 @@ GPIO12 is the volume-down key with a pull-up and also the ESP32 MTDI strap that 
 
 - Set the speaker's Analog/Digital switch to Analog; the firmware cannot read it.
 - P1.5 low enables the amplifier and P1.6 high selects analog audio; with these, FM was heard.
+- There is no dedicated mute GPIO. The application uses the SI4732's RX_HARD_MUTE for both audio channels, retaining the selected volume and keeping the amplifier enabled when toggling mute.
 - The amplifier pops every time it is enabled, regardless of how long it was off, and an SI4732 reset makes a DC step that routing, volume zero or POWER_DOWN cannot hide. Listening tests concluded that power-on and band changes keep one pop and power-off has none; removing it needs hardware changes (amplifier part, SHUTDOWN default, coupling). Do not keep trying firmware timing.
 - The MW ferrite coil has its own switch and may not be fitted. Headphone insertion is not detected.
 
