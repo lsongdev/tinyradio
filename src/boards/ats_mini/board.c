@@ -77,3 +77,5 @@ void board_radio_reset(void) {
   digitalWrite(PIN_RADIO_RESET, HIGH); delay(10);
 }
 i2c_bus_t board_radio_bus(void) { return hal_i2c_bus(&radio_i2c); }
+bool board_frontend_set(uint32_t rf_hz) { (void)rf_hz; return true; }
+uint32_t board_frontend_receiver_hz(uint32_t rf_hz) { return rf_hz; }

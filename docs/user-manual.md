@@ -49,7 +49,7 @@ Replace `PORT` with the receiver's USB serial port. Close other serial monitors 
 | MW | 520–1710 kHz | AM, LSB, USB |
 | SW | 2.3–26.1 MHz | AM, LSB, USB |
 | VHF | 64–108 MHz | FM |
-| AIR | 118–137 MHz, reference only | Unavailable |
+| AIR | 118–137 MHz, GeekNest V5A only; grayed out elsewhere | AM (no seek) |
 
 Unavailable bands and modes are gray and skipped during selection. The SSB patch enables LSB/USB; it does not enable VHF aviation reception.
 

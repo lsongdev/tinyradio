@@ -7,12 +7,20 @@
 typedef struct {
   const char* name;
   uint32_t min_hz, max_hz, initial_hz;
-  bool fm, available;
+  bool fm;         // FM only; otherwise AM, plus LSB/USB when ssb is set.
+  bool ssb;
+  bool converted;  // Reached through a board frequency converter, not tuned by the chip directly.
+  bool available;
 } radio_band_t;
 #define RADIO_BAND_COUNT 5
-extern const radio_band_t radio_bands[RADIO_BAND_COUNT];
+enum { RADIO_BAND_AIR = 4 };
+// AIR starts unavailable; boards with a converter enable it at startup.
+extern radio_band_t radio_bands[RADIO_BAND_COUNT];
+void radio_set_band_available(size_t index, bool available);
 static inline bool radio_mode_allowed(const radio_band_t* band, si473x_mode_t mode) {
-  return band->available && (unsigned)mode <= SI473X_USB && (band->fm ? mode == SI473X_FM : mode != SI473X_FM);
+  if (!band->available || (unsigned)mode > SI473X_USB) return false;
+  if (band->fm) return mode == SI473X_FM;
+  return mode == SI473X_AM || (band->ssb && si473x_is_ssb(mode));
 }
 uint32_t radio_step_option(size_t band, si473x_mode_t mode, int index);
 uint8_t radio_step_option_count(size_t band, si473x_mode_t mode);

@@ -24,6 +24,10 @@ static bool reference_ready = false;
 static pcf8523_t rtc;
 static sht3x_t environment;
 static bool measuring = false, measured = false;
+enum { AIR_IF_HZ = 10700000 };
+enum route { ROUTE_UNKNOWN, ROUTE_DIRECT, ROUTE_LNA, ROUTE_AIR };
+static enum route route = ROUTE_UNKNOWN;
+static uint32_t lo_hz = 0;
 static uint32_t measurement_started = 0;
 
 static void take_power_latch(void) {
@@ -99,6 +103,34 @@ void board_radio_reset(void) {
 }
 i2c_bus_t board_radio_bus(void) { return hal_i2c_bus(&i2c); }
 
+static enum route route_for(uint32_t rf_hz) {
+  return rf_hz >= 110000000 ? ROUTE_AIR : rf_hz >= 2000000 ? ROUTE_LNA : ROUTE_DIRECT;
+}
+uint32_t board_frontend_receiver_hz(uint32_t rf_hz) { return route_for(rf_hz) == ROUTE_AIR ? AIR_IF_HZ : rf_hz; }
+bool board_frontend_set(uint32_t rf_hz) {
+  const enum route next = route_for(rf_hz);
+  if (next != route) {
+    const bool air = next == ROUTE_AIR, lna = next != ROUTE_DIRECT;
+    route = ROUTE_UNKNOWN;
+    if (!xl9555_set_outputs(&expander, 0, EXPANDER_RF_MIXER | EXPANDER_RF_LNA,
+                            (air ? EXPANDER_RF_MIXER : 0) | (lna ? EXPANDER_RF_LNA : 0)) ||
+        !xl9555_set_outputs(&expander, 1, EXPANDER_MIXER_POWER | EXPANDER_LNA_POWER,
+                            (air ? EXPANDER_MIXER_POWER : 0) | (lna ? EXPANDER_LNA_POWER : 0))) return false;
+    if (!air && lo_hz) { if (!si5351_disable_clk0(&clock_generator)) return false; lo_hz = 0; }
+    if (air) delay(10); // Let the SA602 supply settle before locking the LO.
+    route = next;
+  }
+  if (next != ROUTE_AIR || lo_hz == rf_hz - AIR_IF_HZ) return true;
+  // Low-side injection: LO = RF - IF.
+  lo_hz = 0;
+  if (!si5351_set_clk0(&clock_generator, rf_hz - AIR_IF_HZ)) return false;
+  lo_hz = rf_hz - AIR_IF_HZ;
+  return true;
+}
+static void frontend_off(void) {
+  xl9555_set_outputs(&expander, 1, EXPANDER_MIXER_POWER | EXPANDER_LNA_POWER, 0);
+  route = ROUTE_UNKNOWN; lo_hz = 0;
+}
 bool board_rtc_read(int64_t* utc_seconds) {
   pcf8523_time_t t;
   bool valid;
@@ -136,6 +168,7 @@ void board_power_off(void) {
   board_speaker_set_enabled(false);
   delay(5);
   si5351_disable_outputs(&clock_generator);
+  frontend_off();
   board_display_sleep();
   esp_sleep_enable_ext0_wakeup(PIN_ENCODER_BUTTON, 0);
   digitalWrite(PIN_POWER_HOLD, LOW);

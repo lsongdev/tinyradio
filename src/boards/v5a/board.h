@@ -10,6 +10,7 @@
 #define BOARD_SCREEN_WIDTH 320
 #define BOARD_SCREEN_HEIGHT 240
 #define BOARD_HAS_RTC 1 // PCF8523 keeps UTC across power off.
+#define BOARD_HAS_AIR 1 // 118-137 MHz through the Si5351 LO and SA602 mixer.
 #define BOARD_RADIO_EXTERNAL_CLOCK 1 // SI4732 RCLK comes from Si5351 CLK1.
 #define BOARD_CAN_POWER_OFF 1        // Software power latch; see board_power_off().
 
@@ -52,6 +53,11 @@ bool board_radio_begin(void); // False when the reference clock did not lock.
 void board_radio_set_powered(bool powered);
 void board_radio_reset(void);
 i2c_bus_t board_radio_bus(void);
+// RF front end. set() routes the antenna for rf_hz (direct for LW/MW, LNA for
+// SW/VHF, LNA + SA602 mixer for AIR) and, for AIR, sets the LO to rf - 10.7 MHz.
+// receiver_hz() is the frequency the SI4732 must tune to: the 10.7 MHz IF for AIR.
+bool board_frontend_set(uint32_t rf_hz);
+uint32_t board_frontend_receiver_hz(uint32_t rf_hz);
 
 // Turns off the amplifier, reference clock and display, arms the encoder key
 // as the wake source and releases the power latch. On battery the board loses

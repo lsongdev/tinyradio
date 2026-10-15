@@ -25,6 +25,8 @@ static int brightness = 128;
 static si473x_reception_t reception[4] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
 static bool reception_dirty = true;
 static bool band_locked = false; // Session only; not saved.
+static uint32_t frontend_hz = 0;  // RF the board front end is set for; 0 forces a new setting.
+static bool frontend_failed = false;
 static hal_settings_storage_t storage;
 static const char SETTINGS_KEY[] = "settings";
 // UTC offset in minutes, 2 bytes little-endian; only kept on boards with an RTC.
@@ -84,6 +86,7 @@ static void remember_settings(uint32_t now) {
     last_save_attempt = 0; ++settings_writes; serial_println("Settings: saved");
   } else serial_println("Settings: save failed; retry in 10s");
 }
+#if BOARD_CAN_POWER_OFF
 // Writes changed settings now, ignoring the debounce; for power off.
 static bool flush_settings(void) {
   uint8_t bytes[RADIO_SETTINGS_SIZE];
@@ -94,6 +97,18 @@ static bool flush_settings(void) {
   memcpy(stored_settings, bytes, sizeof bytes); memcpy(observed_settings, bytes, sizeof bytes);
   settings_stored = true; save_pending = false; ++settings_writes;
   return true;
+}
+#endif
+// At the model frequency: front end set for it and the chip confirmed at the
+// frequency the board needs (the IF on converted bands).
+static bool on_frequency(void) {
+  const uint32_t rf = radio_model_frequency(&model);
+  return frontend_hz == rf && chip.confirmed_hz == board_frontend_receiver_hz(rf);
+}
+static uint32_t confirmed_rf(void) { return on_frequency() ? radio_model_frequency(&model) : chip.confirmed_hz; }
+// The chip's own seek only covers frequencies it tunes directly, and not SSB.
+static bool can_seek(void) {
+  return !si473x_is_ssb(radio_model_mode(&model)) && !radio_model_band(&model)->converted;
 }
 static const char* radio_message(void) {
   return rds_enhanced_text(&chip.rds)[0] ? rds_enhanced_text(&chip.rds) : rds_radio_text(&chip.rds);
@@ -112,8 +127,8 @@ static void report(void) {
   const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
   serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu supply=%.3f adc=%lu locked=%d env=%d temp=%ld rh=%lu error=%s\n",
     radio_model_band(&model)->name, si473x_mode_name(radio_model_mode(&model)), (unsigned long)radio_model_frequency(&model),
-    (unsigned long)chip.confirmed_hz, (unsigned long)radio_model_step(&model), volume, brightness, muted, settings_stored, save_pending, (unsigned long)settings_writes,
-    chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, si473x_error_text(&chip));
+    (unsigned long)confirmed_rf(), (unsigned long)radio_model_step(&model), volume, brightness, muted, settings_stored, save_pending, (unsigned long)settings_writes,
+    chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, frontend_failed ? "RF front end failed" : si473x_error_text(&chip));
 }
 static void draw(void) {
   char clock_text[6], date_text[24];
@@ -130,9 +145,9 @@ static void draw(void) {
   view.date_time = time.valid ? date_text : NULL;
   view.environment = environment; view.environment_known = environment_known;
   view.signal = chip.signal; view.reception = *settings();
-  view.ps = rds_ps(&chip.rds); view.message = radio_message(); view.error = si473x_error_text(&chip);
+  view.ps = rds_ps(&chip.rds); view.message = radio_message(); view.error = frontend_failed ? "RF front end failed" : si473x_error_text(&chip);
   view.failed = failed; view.seeking = chip.seeking; view.seek_mode = seek_mode; view.band_locked = band_locked;
-  view.pending = reconfigure || chip.tuning || chip.seeking || chip.confirmed_hz != radio_model_frequency(&model);
+  view.pending = reconfigure || chip.tuning || chip.seeking || !on_frequency();
   view.seek_arrow = seek_mode && (chip.seeking || pending_seek) ? (pending_seek ? pending_seek : seek_direction) : 0;
   view.audio_status_known = chip.signal.quality_known && !reconfigure && !chip.tuning && !chip.seeking;
   view.notice = power_pending ? "Release to power off" : NULL;
@@ -151,6 +166,7 @@ static void changed_configuration(void) {
 static void retry(void) {
   board_audio_set_muted(true); board_speaker_set_enabled(false);
   board_radio_reset(); failed = !si473x_begin(&chip); applied_volume = -1;
+  frontend_hz = 0; frontend_failed = false;
   audio_ready = false; changed_configuration();
 }
 static void tune_by(int delta) {
@@ -170,7 +186,7 @@ static void stop_seek(bool manual) {
   dirty = true;
 }
 static void request_seek(int delta) {
-  if (failed || si473x_is_ssb(radio_model_mode(&model)) || !delta) return;
+  if (failed || !can_seek() || !delta) return;
   const int direction = delta > 0 ? 1 : -1;
   if (chip.seeking && direction == seek_direction) return; // No queued station skipping.
   if (chip.seeking) stop_seek(false);
@@ -185,7 +201,7 @@ static void toggle_mute(void) {
 static void long_press(void) {
   if (field == UI_FIELD_FREQUENCY) {
     if (seek_mode) stop_seek(true);
-    else if (!failed && !si473x_is_ssb(radio_model_mode(&model))) { seek_mode = true; dirty = true; }
+    else if (!failed && can_seek()) { seek_mode = true; dirty = true; }
   } else if (field == UI_FIELD_VOLUME) toggle_mute();
   else if (field == UI_FIELD_BAND) { band_locked = !band_locked; dirty = true; }
 }
@@ -222,7 +238,7 @@ static void serial_input(void) {
   for (int count = 0; count < 16; ++count) {
     const int c = serial_read();
     if (c < 0) break;
-    if (c >= '0' && c <= '3') { radio_model_set_band(&model, c - '0'); changed_configuration(); }
+    if (c >= '0' && c <= '4') { radio_model_set_band(&model, c - '0'); changed_configuration(); }
     else if (c == 'a' || c == 'l' || c == 'u' || c == 'f') {
       const si473x_mode_t mode = c == 'a' ? SI473X_AM : c == 'l' ? SI473X_LSB : c == 'u' ? SI473X_USB : SI473X_FM;
       if (radio_model_set_mode(&model, mode)) changed_configuration();
@@ -312,6 +328,7 @@ static void button_input(uint32_t now) {
 
 void receiver_begin(void) {
   serial_begin(115200); board_begin();
+  radio_set_band_available(RADIO_BAND_AIR, BOARD_HAS_AIR); // Before restoring memories.
   radio_model_init(&model);
   load_settings();
   if (BOARD_HAS_RTC) restore_clock();
@@ -359,19 +376,25 @@ void receiver_update(void) {
       if (!si473x_set_reception(&chip, settings())) fail(); else reception_dirty = false;
       dirty = true;
     }
-    if (!failed && pending_seek && !chip.tuning && !chip.seeking && chip.confirmed_hz == radio_model_frequency(&model)) {
+    if (!failed && pending_seek && !chip.tuning && !chip.seeking && on_frequency()) {
       const radio_band_t* band = radio_model_band(&model);
       seek_direction = pending_seek; pending_seek = 0;
       board_audio_set_muted(true); audio_ready = false;
       if (!si473x_seek(&chip, seek_direction > 0, band->min_hz, band->max_hz, radio_model_step(&model))) fail();
       dirty = true;
     }
-    if (!failed && !chip.tuning && !chip.seeking && chip.confirmed_hz != radio_model_frequency(&model) && now - last_tune >= 30) {
+    if (!failed && !chip.tuning && !chip.seeking && !on_frequency() && now - last_tune >= 30) {
+      const uint32_t rf = radio_model_frequency(&model), receiver_hz = board_frontend_receiver_hz(rf);
       last_tune = now;
-      if (!si473x_tune(&chip, radio_model_frequency(&model))) fail();
+      if (frontend_hz != rf) {
+        frontend_hz = 0;
+        if (board_frontend_set(rf)) frontend_hz = rf;
+        else { frontend_failed = true; fail(); }
+      }
+      if (!failed && chip.confirmed_hz != receiver_hz && !si473x_tune(&chip, receiver_hz)) fail();
       dirty = true;
     }
-    if (!failed && !chip.tuning && !chip.seeking && !pending_seek && chip.confirmed_hz == radio_model_frequency(&model) && !audio_ready) {
+    if (!failed && !chip.tuning && !chip.seeking && !pending_seek && on_frequency() && !audio_ready) {
       audio_ready = true; board_speaker_set_enabled(true); board_audio_set_muted(muted); dirty = true;
     }
     if (!failed && applied_volume != volume) {

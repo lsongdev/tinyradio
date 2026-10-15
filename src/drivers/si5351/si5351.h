@@ -14,3 +14,7 @@ bool si5351_write(const si5351_t* chip, uint8_t reg, const uint8_t* bytes, uint8
 // PLLA and the other multisynths are left alone; CLK0's output is disabled.
 bool si5351_start_clk1_32768(const si5351_t* chip);
 bool si5351_disable_outputs(const si5351_t* chip);
+// Drives CLK0 at hz (about 100-150 MHz) from PLLA with an integer MS0 = 6,
+// waiting up to 300 ms for PLLA to lock. CLK1/PLLB are left running.
+bool si5351_set_clk0(const si5351_t* chip, uint32_t hz);
+bool si5351_disable_clk0(const si5351_t* chip);

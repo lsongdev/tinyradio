@@ -10,6 +10,7 @@
 #define BOARD_SCREEN_WIDTH 320
 #define BOARD_SCREEN_HEIGHT 170
 #define BOARD_HAS_RTC 0 // No calendar chip: time is lost at power off.
+#define BOARD_HAS_AIR 0 // No frequency converter.
 #define BOARD_RADIO_EXTERNAL_CLOCK 0 // SI4732 has its own 32.768 kHz crystal.
 #define BOARD_CAN_POWER_OFF 0        // Hardware power switch; no board_power_off().
 
@@ -44,3 +45,6 @@ bool board_radio_begin(void); // False when the radio's support hardware failed.
 void board_radio_set_powered(bool powered);
 void board_radio_reset(void);
 i2c_bus_t board_radio_bus(void);
+// Direct antenna path: the SI4732 tunes every RF frequency itself.
+bool board_frontend_set(uint32_t rf_hz);
+uint32_t board_frontend_receiver_hz(uint32_t rf_hz);
