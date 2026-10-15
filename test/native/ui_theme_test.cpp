@@ -24,6 +24,11 @@ static const Draw& find(Surface surface, const char* operation, int x, int y) {
   assert(false && "Missing draw operation");
   return draws.front();
 }
+static const Draw* signalText(const char* text) {
+  for (const auto& draw : draws)
+    if (draw.surface == PANEL && draw.operation == "text" && draw.y == 95 && draw.text == text) return &draw;
+  return nullptr;
+}
 static void checkSignalRow(Surface surface, bool fm) {
   const auto& sm = find(surface, "rect", 258, 70);
   const auto& step = find(surface, "rect", 258, 91);
@@ -36,7 +41,7 @@ static void checkSignalRow(Surface surface, bool fm) {
     assert(previousRight <= 252); // Clear the Step control and its six-pixel gap.
     ++count;
   }
-  assert(count == (fm ? 6 : 5) && previousRight == 252);
+  assert(count == (fm ? 5 : 4) && previousRight == 252);
 }
 static double luminance(uint16_t rgb) {
   const int red = (rgb >> 11) & 31, green = (rgb >> 5) & 63, blue = rgb & 31;
@@ -48,12 +53,26 @@ static double luminance(uint16_t rgb) {
          .0722 * linear((blue << 3) | (blue >> 2));
 }
 int main() {
-  const auto& light = *ui_theme_get(UI_THEME_LIGHT);
-  for (auto color : {light.text_primary, light.text_secondary, light.text_muted, light.control_disabled,
-                     light.accent, light.control_focus, light.status_positive, light.status_danger,
-                     light.status_notice, light.audio_muted, light.audio_stereo, light.active,
-                     light.ruler_current, light.ruler_adjacent})
-    assert((luminance(light.background) + .05) / (luminance(color) + .05) >= 4.5);
+  // Measure the actual RGB565 values, for both light and dark backgrounds.
+  for (int i = 0; i < UI_THEME_COUNT; ++i) {
+    const auto& theme = *ui_theme_get((ui_theme_id_t)i);
+    const auto contrast = [&](uint16_t color) {
+      const double a = luminance(theme.background), b = luminance(color);
+      return (std::fmax(a, b) + .05) / (std::fmin(a, b) + .05);
+    };
+    for (auto color : {theme.text_primary, theme.text_secondary, theme.text_muted, theme.control_disabled,
+                       theme.accent, theme.control_focus, theme.status_positive, theme.status_danger,
+                       theme.status_notice, theme.audio_muted, theme.active,
+                       theme.ruler_current, theme.ruler_adjacent})
+      assert(contrast(color) >= 4.5);
+    assert(contrast(theme.text_primary) >= 12);
+    assert(contrast(theme.text_secondary) >= 7);
+    assert(contrast(theme.border_subtle) >= 3);
+    assert(theme.accent != theme.control_focus && theme.accent != theme.active && theme.control_focus != theme.active);
+    assert(ui_theme_name((ui_theme_id_t)i)[0]);
+  }
+  assert(ui_theme_get((ui_theme_id_t)UI_THEME_COUNT) == ui_theme_get(UI_THEME_DARK));
+  assert(ui_theme_get((ui_theme_id_t)-1) == ui_theme_get(UI_THEME_DARK));
   radio_model_t model; radio_model_init(&model);
   uint8_t bars[SPECTRUM_BARS]; memset(bars, 128, sizeof bars);
   ui_view_t view{};
@@ -75,7 +94,8 @@ int main() {
     assert(find(PANEL, "screen", 0, 0).color == ui_theme_get(UI_THEME_LIGHT)->background);
     const auto main = buffered ? FRAME : PANEL, extra = extras_available ? EXTRAS : PANEL;
     const int extra_top = extras_available ? 0 : 170;
-    for (auto id : {UI_THEME_DARK, UI_THEME_LIGHT, UI_THEME_DARK}) {
+    for (int index = 0; index <= UI_THEME_COUNT; ++index) {
+      const auto id = (ui_theme_id_t)(index % UI_THEME_COUNT);
       view.theme = id;
       const auto& theme = *ui_theme_get(id);
       draws.clear(); ui_draw(&view);
@@ -93,7 +113,7 @@ int main() {
       assert(find(main, "rect", 117, 70).color == theme.accent); // BW control.
       assert(find(main, "rect", 258, 91).color == theme.accent); // Step aligns with SM.
       assert(find(extra, "fill", 12, extra_top + 24).color == theme.accent); // Spectrum bar.
-      assert(find(main, "dot", 239, 10).color == theme.audio_stereo);
+      assert(find(main, "dot", 239, 10).color == theme.text_secondary);
       checkSignalRow(main, true);
       assert(find(extra, "fill", 0, extra_top).color == theme.background);
       for (const auto& draw : draws) {
@@ -108,7 +128,7 @@ int main() {
     }
     view.muted = true; view.field = UI_FIELD_VOLUME;
     draws.clear(); ui_draw(&view);
-    assert(find(main, "rect", 232, 8).color == ui_theme_get(view.theme)->audio_muted);
+    assert(find(main, "rect", 232, 8).color == ui_theme_get(view.theme)->control_focus);
     assert(find(main, "text", 248, 7).color == ui_theme_get(view.theme)->control_focus);
     view.muted = false; view.field = UI_FIELD_SOFT_MUTE;
   }
@@ -117,10 +137,11 @@ int main() {
   assert(find(PANEL, "rect", 115, 2).color == ui_theme_get(view.theme)->text_secondary);
   assert(find(PANEL, "text", 128, 10).text == "AIR");
   radio_set_band_available(RADIO_BAND_AIR, false);
-  // Keep all readings visible at their longest values, during transitions, and without FM's pilot.
+  // Keep all readings visible at their longest values, during transitions, and without FM's RDS label.
   view.signal.rssi = view.signal.snr = view.signal.gain_index = 255;
   view.signal.valid = false;
-  for (auto id : {UI_THEME_DARK, UI_THEME_LIGHT}) {
+  for (int index = 0; index < UI_THEME_COUNT; ++index) {
+    const auto id = (ui_theme_id_t)index;
     view.theme = id;
     for (size_t band : {size_t(3), size_t(1)}) {
       assert(radio_model_set_band(&model, band));
@@ -129,6 +150,105 @@ int main() {
         draws.clear(); ui_draw(&view);
         checkSignalRow(PANEL, radio_model_band(&model)->fm);
       }
+    }
+  }
+  // RDS reflects live synchronization, not retained text or the last signal-quality poll.
+  for (int index = 0; index < UI_THEME_COUNT; ++index) {
+    const auto id = (ui_theme_id_t)index;
+    view.theme = id;
+    const auto& theme = *ui_theme_get(id);
+    assert(radio_model_set_band(&model, 3));
+    view.failed = view.pending = false;
+    view.signal.quality_known = true;
+    view.rds_synchronized = true;
+    view.ps = "";
+    draws.clear(); ui_draw(&view);
+    assert(signalText("RDS") && signalText("RDS")->color == theme.active);
+    assert(signalText("SNR255dB") && !signalText("RF255") && !signalText("P1"));
+    view.signal.quality_known = false;
+    draws.clear(); ui_draw(&view);
+    assert(signalText("RDS")->color == theme.active && signalText("SNR--dB"));
+    view.ps = "OLD NAME"; view.rds_synchronized = false;
+    draws.clear(); ui_draw(&view);
+    assert(signalText("RDS")->color == theme.text_muted);
+    view.rds_synchronized = true; view.pending = true;
+    draws.clear(); ui_draw(&view);
+    assert(signalText("RDS")->color == theme.text_muted);
+    view.pending = false; view.failed = true;
+    draws.clear(); ui_draw(&view);
+    assert(signalText("RDS")->color == theme.text_muted);
+    view.failed = false;
+    assert(radio_model_set_band(&model, 1));
+    draws.clear(); ui_draw(&view);
+    assert(!signalText("RDS"));
+    view.ps = "";
+  }
+  // Configuration, runtime emphasis and focus are independent control states.
+  for (int index = 0; index < UI_THEME_COUNT; ++index) {
+    const auto id = (ui_theme_id_t)index;
+    view.theme = id;
+    const auto& theme = *ui_theme_get(id);
+    view.failed = view.pending = false;
+    view.signal.quality_known = true;
+    view.field = UI_FIELD_FREQUENCY;
+    const auto checkSm = [&](uint16_t border, uint16_t text) {
+      draws.clear(); ui_draw(&view);
+      assert(find(PANEL, "rect", 258, 70).color == border);
+      assert(find(PANEL, "text", 287, 78).color == text);
+    };
+    view.reception.soft_mute_db = 0; view.signal.soft_muted = true;
+    checkSm(theme.text_secondary, theme.text_secondary); // Off ignores stale chip attenuation.
+    view.field = UI_FIELD_SOFT_MUTE;
+    checkSm(theme.control_focus, theme.control_focus); // Off remains adjustable.
+    view.reception.soft_mute_db = 16; view.signal.soft_muted = false;
+    view.field = UI_FIELD_FREQUENCY;
+    checkSm(theme.accent, theme.accent); // Configured, but currently idle.
+    view.signal.soft_muted = true;
+    checkSm(theme.accent, theme.active);
+    view.field = UI_FIELD_SOFT_MUTE;
+    checkSm(theme.control_focus, theme.active); // Runtime emphasis overrides only text.
+    view.pending = true;
+    checkSm(theme.control_focus, theme.control_focus); // Tuning makes old signal data inapplicable.
+    view.pending = false; view.signal.quality_known = false;
+    checkSm(theme.control_focus, theme.control_focus);
+    view.signal.quality_known = true;
+
+    assert(radio_model_set_band(&model, 1) && radio_model_set_mode(&model, SI473X_AM));
+    view.field = UI_FIELD_MODE;
+    draws.clear(); ui_draw(&view);
+    assert(find(PANEL, "rect", 3, 70).color == theme.control_disabled); // FM not allowed on MW.
+    assert(find(PANEL, "rect", 31, 70).color == theme.control_focus);
+    assert(find(PANEL, "text", 44, 78).color == theme.control_focus);
+    assert(find(PANEL, "rect", 59, 70).color == theme.text_secondary); // LSB available, not selected.
+    view.field = UI_FIELD_BAND;
+    draws.clear(); ui_draw(&view);
+    assert(find(PANEL, "rect", 31, 2).color == theme.control_focus);
+    assert(find(PANEL, "text", 44, 10).color == theme.active); // Lock and focus coexist.
+
+    for (int state = 0; state < 4; ++state) {
+      view.muted = state == 2; view.audio_status_known = state != 3; view.signal.stereo = state == 1;
+      const char* shape = state == 1 ? "dot" : "rect";
+      const int x = state == 1 ? 239 : 232, y = state == 1 ? 10 : 8;
+      view.field = UI_FIELD_VOLUME;
+      draws.clear(); ui_draw(&view);
+      assert(find(PANEL, shape, x, y).color == theme.control_focus);
+      assert(find(PANEL, "text", 248, 7).color == theme.control_focus);
+      view.field = UI_FIELD_FREQUENCY;
+      draws.clear(); ui_draw(&view);
+      const uint16_t expected = state == 2 ? theme.audio_muted : state == 3 ? theme.text_muted : theme.text_secondary;
+      assert(find(PANEL, shape, x, y).color == expected);
+
+      view.supply.plausible = state != 2; view.supply.external_power_likely = state == 3;
+      view.supply.estimated_percent = state == 1 ? 10 : 80;
+      view.field = UI_FIELD_BATTERY;
+      draws.clear(); ui_draw(&view);
+      assert(find(PANEL, "rect", 274, 6).color == theme.control_focus);
+      assert(find(PANEL, "text", 290, 7).color == theme.control_focus);
+      view.field = UI_FIELD_FREQUENCY;
+      draws.clear(); ui_draw(&view);
+      const uint16_t battery = state == 1 || state == 2 ? theme.status_danger : state == 3 ? theme.active : theme.text_secondary;
+      assert(find(PANEL, "rect", 274, 6).color == battery);
+      assert(find(PANEL, "text", 290, 7).color == battery);
     }
   }
   puts("UI themes: shared brand accent and active colors, state overrides, backgrounds and extras cache passed");

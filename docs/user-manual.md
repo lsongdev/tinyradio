@@ -65,7 +65,7 @@ Manual tuning crosses from one band to the next at its endpoint. It stops at the
 | Rotate in seek mode | Search up/down within the current band |
 | Short-press in seek mode | Cancel search at the current frequency, return to manual tuning, and keep Frequency focused |
 | Long-press Volume | Toggle mute while retaining the chosen volume |
-| Long-press Brightness | Switch between dark and light themes; the choice is saved |
+| Long-press Brightness | Cycle Dark → Paper → Parchment → Midnight → Forest; the choice is saved |
 | Long-press Band | Lock or unlock the current band: manual tuning stops at its edges instead of crossing |
 | Short-press on receiver error | Reset the radio chip and retry |
 | Hold 3 s (V5A) | `Release to power off` appears; releasing saves settings and powers off. Press the encoder to switch on. On the V5A, long-press actions run on release so a longer hold can power off |
@@ -80,30 +80,39 @@ At band boundaries, the ruler reserves space for names such as SW and VHF. Blank
 
 ### Colors and volume
 
-Dark is the default theme. Focus Brightness and long-press to switch themes. Light mode uses a cool near-white background, dark slate text, a deep teal accent, and darker state colors for contrast.
+Dark is the default theme. Focus Brightness and long-press to cycle themes; the theme name appears briefly and the choice is saved. Backlight brightness stays at the chosen level.
+
+| Theme | Appearance |
+| --- | --- |
+| Dark | Black background, cyan controls, yellow focus |
+| Paper | Near-white background, deep neutral text, navy controls, burnt-orange focus |
+| Parchment | Warm paper background, brown controls, deep-blue focus |
+| Midnight | Ink-blue background, soft blue controls, amber focus |
+| Forest | Deep green background, sage controls, gold focus |
+
+All text colors meet at least 4.5:1 contrast against their background after RGB565 conversion; primary text exceeds 12:1, secondary text exceeds 7:1, and subtle borders meet 3:1. Enabled/current options, encoder focus, and active effects retain distinct colors in every theme.
 
 - **Yellow (dark) / amber (light):** focused value controlled by the encoder.
-- **Cyan (dark) / teal (light):** brand accent for selected options, normal control borders, and spectrum bars (unselected band borders stay gray); a speaker in this color indicates stereo blend.
+- **Cyan (dark) / teal (light):** brand accent for enabled features, current options, and spectrum bars (SM OFF and unselected band/mode options stay gray unless focused).
 - **Gray:** unavailable option or unknown status; a normal speaker indicates mono.
 - **Magenta (dark) / purple (light):** active state, shared by seek mode/direction, band lock, engaged soft mute, and external power. Band lock and soft mute change only the text; their borders retain focus/selection color.
 - **Red crossed speaker:** muted.
 
-Mono uses the speaker outline; stereo uses a center dot with symmetric waves on both sides in the same 15 × 11 pixel area. Muted or unknown audio status uses the speaker outline. The wave count on each side represents volume: none at zero, one through 33%, two through 67%, and three above 67%. When Volume is focused, its percentage uses the focus highlight while the icon keeps its mono/stereo color.
+Mono uses the speaker outline; stereo uses a center dot with symmetric waves on both sides in the same 15 × 11 pixel area. Both use the same normal icon color. Muted or unknown audio status uses the speaker outline. The wave count on each side represents volume: none at zero, one through 33%, two through 67%, and three above 67%. Focusing Volume, Battery or Brightness highlights both the icon and its text. The mute cross and battery fill stay visible; normal state colors return when focus moves away.
 
 ### Signal indicators
 
 | Indicator | Meaning |
 | --- | --- |
 | Signal bars / RSSI | Received signal strength in dBµV |
-| SN | Signal-to-noise ratio in dB |
+| SNR | Signal-to-noise ratio in dB |
 | VALID / INVALID | Whether the chip considers the channel valid for its seek criteria |
 | TUNING / SEEK | A tune or search is in progress |
 | AFC OK / AFC! | Frequency correction is within range / has reached its limit |
-| RF | Current chip gain index, not a value in dB |
-| P0 / P1 | FM stereo pilot absent / detected |
+| RDS | FM only: the active-state color means currently synchronized; gray means not synchronized or tuning. Retained station text does not imply current sync |
 | `--` | A stable measurement is not available |
 
-VALID does not guarantee an intelligible station or successful RDS decoding. SSB has AFC disabled by patch configuration.
+RF gain index and stereo pilot detection remain available through serial diagnostics. VALID does not guarantee an intelligible station or successful RDS decoding. SSB has AFC disabled by patch configuration.
 
 ## RDS station names and text
 

@@ -11,6 +11,18 @@ extern "C" {
 }
 namespace {
 struct ScrollState { char text[129]; int width; uint32_t started; };
+struct ControlState {
+  bool available; // This hardware/mode permits the feature or option.
+  bool enabled;   // Feature switched on, or the current choice in an option group.
+  bool focused;   // The encoder is operating this control.
+  bool special;   // Feature-specific emphasis, e.g. SM attenuation or band lock.
+};
+struct ControlStyle { uint16_t border, text; };
+ControlStyle controlStyle(const ui_theme_t& theme, const ControlState& state) {
+  if (!state.available) return {theme.control_disabled, theme.control_disabled};
+  const uint16_t border = state.focused ? theme.control_focus : state.enabled ? theme.accent : theme.text_secondary;
+  return {border, state.enabled && state.special ? theme.active : border};
+}
 lgfx::LGFX_Sprite frame(&board_display_device()), extras(&board_display_device());
 bool buffered = false, extras_buffered = false;
 char extras_shown[64];
@@ -216,11 +228,11 @@ void ui_draw(const ui_view_t* view) {
     if (!radio_bands[i].available) continue;
     const int x = bandX;
     bandX += 28;
-    const bool active = model.band == i;
-    const uint16_t color = active ? (view->field == UI_FIELD_BAND ? theme.control_focus : theme.accent) : theme.text_secondary;
-    g.drawRect(x, 2, 26, 17, color);
+    const bool selected = model.band == i;
+    const auto style = controlStyle(theme, {true, selected, selected && view->field == UI_FIELD_BAND, selected && view->band_locked});
+    g.drawRect(x, 2, 26, 17, style.border);
     g.setTextDatum(lgfx::textdatum_t::middle_center);
-    g.setTextColor(active && view->band_locked ? theme.active : color, theme.background);
+    g.setTextColor(style.text, theme.background);
     g.drawString(radio_bands[i].name, x + 13, 10);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
@@ -231,19 +243,21 @@ void ui_draw(const ui_view_t* view) {
   uint16_t color = view->field == UI_FIELD_BRIGHTNESS ? theme.control_focus : theme.text_secondary;
   drawSun(g, 190, color); g.setTextColor(color, theme.background);
   g.setCursor(206, 7); g.printf("%d%%", (view->brightness * 100 + 127) / 255);
-  const uint16_t speakerColor = view->muted ? theme.audio_muted : !view->audio_status_known ? theme.text_muted :
-                                view->signal.stereo ? theme.audio_stereo : theme.text_secondary;
+  const uint16_t speakerColor = view->field == UI_FIELD_VOLUME ? theme.control_focus :
+                                view->muted ? theme.audio_muted : !view->audio_status_known ? theme.text_muted :
+                                theme.text_secondary;
   if (!view->muted && view->audio_status_known && view->signal.stereo) drawStereo(g, 232, speakerColor, view->volume);
   else drawSpeaker(g, 232, speakerColor, view->muted, view->volume);
   color = view->field == UI_FIELD_VOLUME ? theme.control_focus : view->muted ? theme.audio_muted : theme.text_secondary;
   g.setTextColor(color, theme.background);
   g.setCursor(248, 7); g.printf("%d%%", (view->volume * 100 + 31) / 63);
   const auto& supply = view->supply;
-  color = !supply.plausible ? theme.status_danger : supply.external_power_likely ? theme.active : supply.estimated_percent < 20 ? theme.status_danger : theme.text_secondary;
+  color = view->field == UI_FIELD_BATTERY ? theme.control_focus : !supply.plausible ? theme.status_danger :
+          supply.external_power_likely ? theme.active : supply.estimated_percent < 20 ? theme.status_danger : theme.text_secondary;
   g.drawRect(274, 6, 13, 9, color); g.drawFastVLine(287, 8, 5, color);
   if (supply.plausible) g.fillRect(276, 8, supply.external_power_likely ? 9 : supply.estimated_percent * 9 / 100, 5, color);
   // The text beside the icon shows the percentage or, when chosen, the voltage ("4.20V" fits to the edge).
-  g.setTextColor(view->field == UI_FIELD_BATTERY ? theme.control_focus : color, theme.background); g.setCursor(290, 7);
+  g.setTextColor(color, theme.background); g.setCursor(290, 7);
   if (!supply.plausible) g.print(view->battery_volts ? "-.--V" : "--%");
   else if (view->battery_volts) g.printf("%.2fV", supply.volts);
   else if (supply.external_power_likely) g.print("USB");
@@ -310,20 +324,20 @@ void ui_draw(const ui_view_t* view) {
   g.setTextDatum(lgfx::textdatum_t::middle_center);
   for (int i = 0; i < 4; ++i) {
     const auto mode = static_cast<si473x_mode_t>(i); const int x = 3 + i * 28;
-    const bool active = currentMode == mode;
-    const uint16_t ink = !radio_mode_allowed(band, mode) ? theme.control_disabled : active ? (view->field == UI_FIELD_MODE ? theme.control_focus : theme.accent) : theme.text_secondary;
-    g.drawRect(x, 70, 26, 17, !radio_mode_allowed(band, mode) ? theme.control_disabled :
-               active && view->field == UI_FIELD_MODE ? theme.control_focus : theme.accent);
-    g.setTextColor(ink, theme.background); g.drawString(si473x_mode_name(mode), x + 13, 78);
+    const bool selected = currentMode == mode;
+    const auto style = controlStyle(theme, {radio_mode_allowed(band, mode), selected, selected && view->field == UI_FIELD_MODE, false});
+    g.drawRect(x, 70, 26, 17, style.border);
+    g.setTextColor(style.text, theme.background); g.drawString(si473x_mode_name(mode), x + 13, 78);
   }
   const auto& signal = view->signal;
   const auto& reception = view->reception;
   const bool stable = !failed && !pending && signal.quality_known;
   constexpr int rightControlX = 258, rightControlWidth = 59;
   const auto option = [&](ui_field_t focus, int x, int width, const char* label) {
-    const bool smActive = focus == UI_FIELD_SOFT_MUTE && stable && reception.soft_mute_db && signal.soft_muted;
-    const uint16_t ink = view->field == focus ? theme.control_focus : theme.accent;
-    g.drawRect(x, 70, width, 17, ink); g.setTextColor(smActive ? theme.active : ink, theme.background);
+    const bool enabled = focus != UI_FIELD_SOFT_MUTE || reception.soft_mute_db > 0;
+    const bool special = focus == UI_FIELD_SOFT_MUTE && stable && signal.soft_muted;
+    const auto style = controlStyle(theme, {true, enabled, view->field == focus, special});
+    g.drawRect(x, 70, width, 17, style.border); g.setTextColor(style.text, theme.background);
     g.drawString(label, x + width / 2, 78);
   };
   char label[24]; int count; const auto* options = si473x_bandwidths(currentMode, &count);
@@ -341,13 +355,11 @@ void ui_draw(const ui_view_t* view) {
   const int bars = stable ? constrain((signal.rssi + 5) / 6, 0, 10) : 0;
   for (int i = 0; i < 10; ++i)
     g.fillRect(signalLeft + i * 3, 95, 2, 8, i < bars ? theme.status_positive : theme.border_subtle);
-  char rssi[16], snr[16], gain[12], pilot[8];
+  char rssi[16], snr[16];
   if (stable) {
-    snprintf(rssi, sizeof rssi, "%udBuV", signal.rssi); snprintf(snr, sizeof snr, "SN%udB", signal.snr);
-    snprintf(gain, sizeof gain, "RF%u", signal.gain_index); snprintf(pilot, sizeof pilot, "P%u", signal.pilot);
+    snprintf(rssi, sizeof rssi, "%udBuV", signal.rssi); snprintf(snr, sizeof snr, "SNR%udB", signal.snr);
   } else {
-    snprintf(rssi, sizeof rssi, "--dBuV"); snprintf(snr, sizeof snr, "SN--dB");
-    snprintf(gain, sizeof gain, "RF--"); snprintf(pilot, sizeof pilot, "P--");
+    snprintf(rssi, sizeof rssi, "--dBuV"); snprintf(snr, sizeof snr, "SNR--dB");
   }
   const char* status = failed ? "ERROR" : pending ? (view->seeking ? "SEEK" : "TUNING") :
                        stable ? (signal.valid ? "VALID" : "INVALID") : "--";
@@ -355,13 +367,13 @@ void ui_draw(const ui_view_t* view) {
     {rssi, theme.text_secondary}, {snr, theme.text_secondary},
     {status, failed ? theme.status_danger : stable && signal.valid ? theme.status_positive : theme.text_muted},
     {!stable ? "AFC --" : signal.afc_rail ? "AFC!" : "AFC OK", stable && signal.afc_rail ? theme.status_danger : theme.text_secondary},
-    {gain, theme.text_secondary}, {pilot, theme.text_secondary},
+    {"RDS", rdsVisible && view->rds_synchronized ? theme.active : theme.text_muted},
   };
-  const int readingCount = band->fm ? 6 : 5;
+  const int readingCount = band->fm ? 5 : 4;
   int textWidth = 0;
   for (int i = 0; i < readingCount; ++i) textWidth += g.textWidth(readings[i].text);
   // Distribute the remaining pixels evenly, including the gap after the bars.
-  // Measuring the labels also accommodates INVALID, pending values and AM's missing pilot.
+  // Measuring the labels also accommodates INVALID, pending values and AM's omitted RDS label.
   const int freeSpace = signalRight - signalLeft - signalBarsWidth - textWidth;
   const int gap = freeSpace / readingCount, remainder = freeSpace % readingCount;
   int x = signalLeft + signalBarsWidth;
@@ -371,8 +383,8 @@ void ui_draw(const ui_view_t* view) {
     x += g.textWidth(readings[i].text);
   }
 
-  const uint16_t stepInk = view->field == UI_FIELD_STEP ? theme.control_focus : theme.accent;
-  g.drawRect(rightControlX, 91, rightControlWidth, 17, stepInk); g.setTextColor(stepInk, theme.background);
+  const auto stepStyle = controlStyle(theme, {true, true, view->field == UI_FIELD_STEP, false});
+  g.drawRect(rightControlX, 91, rightControlWidth, 17, stepStyle.border); g.setTextColor(stepStyle.text, theme.background);
   g.setTextDatum(lgfx::textdatum_t::middle_center);
   if (step >= 1000) snprintf(label, sizeof label, "%lukHz", static_cast<unsigned long>(step / 1000));
   else snprintf(label, sizeof label, "%luHz", static_cast<unsigned long>(step));
