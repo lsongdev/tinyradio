@@ -8,7 +8,7 @@ static void ct_from(rds_decoder_t* r, uint32_t mjd, unsigned hour, unsigned minu
                     uint8_t errors, bool version_b, uint16_t pi) {
   const uint16_t b = 0x4000 | (version_b ? 0x800 : 0) | (mjd >> 15);
   const uint16_t c = (uint16_t)(((mjd & 32767) << 1) | (hour >> 4));
-  const unsigned offset = half_hours < 0 ? (32 | -half_hours) : (unsigned)half_hours;
+  const unsigned offset = half_hours < 0 ? (unsigned)(32 | -half_hours) : (unsigned)half_hours;
   rds_decoder_accept(r, pi, b, (uint16_t)((hour << 12) | (minute << 6) | offset), errors, c);
 }
 static void ct(rds_decoder_t* r, uint32_t mjd, unsigned hour, unsigned minute, int half_hours) {
