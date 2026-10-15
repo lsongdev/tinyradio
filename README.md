@@ -27,14 +27,14 @@ Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stati
 
 | Board | MCU | Build | Status |
 | --- | --- | --- | --- |
-| Sunnygold SI4732 Mini (ATS Mini) | ESP32-S3 | `ats-mini` | Supported; release builds and the [hardware facts](docs/hardware.md) cover this board |
+| Sunnygold SI4732 Mini (ATS Mini) | ESP32-S3 | `ats-mini` | Supported; release builds and the [hardware facts](docs/hardware-ats.md) cover this board |
 | GeekNest V5A | ESP32 | `v5a` | Experimental: display, encoder, side keys, FM reception, saved settings, power on/off, and temperature/humidity verified; RTC timekeeping awaits an RDS clock signal; AIR is not yet supported. See [V5A hardware facts](docs/hardware-v5a.md) |
 
 Both boards share one UI, receiver logic, and SI4732 driver. Board-specific code lives in `src/boards/<name>/`; see [Development](docs/development.md#adding-a-board).
 
 ## Get started
 
-For the ATS Mini, download firmware from the [releases page](https://github.com/lsongdev/ats-mini/releases) and follow the [installation guide](docs/user-manual.md#installing-or-updating-firmware). Successful builds update the day's prerelease. Confirm that your receiver matches the [supported hardware](docs/hardware.md). The GeekNest V5A is built from source with `pio run -e v5a -t upload`; see [Development](docs/development.md#build-and-flash).
+For the ATS Mini, download firmware from the [releases page](https://github.com/lsongdev/ats-mini/releases) and follow the [installation guide](docs/user-manual.md#installing-or-updating-firmware). Successful builds update the day's prerelease. Confirm that your receiver matches the [supported hardware](docs/hardware-ats.md). The GeekNest V5A is built from source with `pio run -e v5a -t upload`; see [Development](docs/development.md#build-and-flash).
 
 After switching on, rotate to tune and short-press to select a control. Long-press Frequency to enter seek mode; long-press Volume to toggle mute. On the V5A, long-press actions run when the encoder is released, and holding it for two seconds powers the radio off. The [user manual](docs/user-manual.md) explains the controls and display.
 
@@ -45,7 +45,7 @@ After switching on, rotate to tune and short-press to select a control. Long-pre
 | [User manual](docs/user-manual.md) | Installation, everyday controls, screen indicators, and troubleshooting |
 | [Design](docs/design.md) | Architecture, tuning and seek, UI, RDS/eRT, and saved settings |
 | [Development](docs/development.md) | Building, flashing, boards, diagnostics, tests, tools, releases, and third-party notices |
-| [Hardware facts](docs/hardware.md) | ATS Mini schematics, GPIOs, power, reference assets, and verified observations |
+| [Hardware facts](docs/hardware-ats.md) | ATS Mini schematics, GPIOs, power, reference assets, and verified observations |
 | [V5A hardware facts](docs/hardware-v5a.md) | GeekNest V5A resources, GPIOs, expander bits, clocks, power latch, and PSRAM constraints |
 
 ## License and credits

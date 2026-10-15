@@ -1,6 +1,6 @@
 # GeekNest V5A Hardware Facts
 
-This page records what is known about the GeekNest Radio V5A main board used for the `v5a` build: resources, wiring, and constraints confirmed on hardware. Chip capabilities are not proof of reception on this board. Recheck wiring on other PCB revisions. The ATS Mini is described in [Hardware facts](hardware.md); building and the board API are in [Development](development.md).
+This page records what is known about the GeekNest Radio V5A main board used for the `v5a` build: resources, wiring, and constraints confirmed on hardware. Chip capabilities are not proof of reception on this board. Recheck wiring on other PCB revisions. The ATS Mini is described in [Hardware facts](hardware-ats.md); building and the board API are in [Development](development.md).
 
 - [Board resources](#board-resources)
 - [GPIO](#gpio)

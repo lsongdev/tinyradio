@@ -1,6 +1,6 @@
 # Development Guide
 
-Build, flash, test, diagnose, and package the firmware from this guide. Implementation decisions are in [Design](design.md), board evidence in [Hardware facts](hardware.md), and receiver operation in the [User manual](user-manual.md).
+Build, flash, test, diagnose, and package the firmware from this guide. Implementation decisions are in [Design](design.md), board evidence in [Hardware facts](hardware-ats.md), and receiver operation in the [User manual](user-manual.md).
 
 - [Source layout](#source-layout)
 - [Build and flash](#build-and-flash)
@@ -130,7 +130,7 @@ It previews the ruler geometry, not a live full screen. Its band ranges and geom
 
 Disconnect USB and measure `VCC_BAT` with a meter. Read the firmware's `supply` (volts) and `adc` (millivolts at the pin) from the serial `?` report. Set `BATTERY_CALIBRATION` in [`src/boards/ats_mini/pins.h`](../src/boards/ats_mini/pins.h) to measured voltage divided by that `supply` reading, then rebuild and compare. The calibration factor defaults to 1.0. The measurement is taken with the receiver running, so it includes the radio and audio load.
 
-The 1.71/1.702 factors found in some other firmware convert raw ADC codes; applying them to this HAL's calibrated millivolt readings would double-convert the measurement. Calibration does not turn the switched supply measurement into a dedicated cell gauge. See [Hardware facts](hardware.md#battery-indication) and the [battery interpretation](design.md#battery-interpretation).
+The 1.71/1.702 factors found in some other firmware convert raw ADC codes; applying them to this HAL's calibrated millivolt readings would double-convert the measurement. Calibration does not turn the switched supply measurement into a dedicated cell gauge. See [Hardware facts](hardware-ats.md#battery-indication) and the [battery interpretation](design.md#battery-interpretation).
 
 ## Continuous integration and daily releases
 
@@ -167,7 +167,7 @@ Its full upstream notice is preserved in the file. The notice states that the pa
 
 `docs/SCH_SI4732_1.2.pdf` and `docs/PCB_SI4732_1.2.pdf` are Sunnygold design attachments, copied unchanged from the [hardware mirror](https://github.com/esp32-si4732/esp32-si4732-oshwhub/tree/6105532703f85a0275950600ff4f040d1f831b24/FILES/2025-01-22). The mirror identifies Sunnygold hardware/software as CC BY-NC-SA 3.0. They are excluded from this project's MIT grant; preserve Sunnygold attribution and upstream terms.
 
-`docs/images/radio-front.jpg`, `radio-chinese-ui.png`, and `pcb-buttons.jpg` come from the [ATS Mini community documentation](https://github.com/esp32-si4732/ats-mini/tree/ab4f5dc8120767cbb134b70096929f74c49df3e7/docs/source/_static). These photographs retain their upstream ownership; a uniform image license has not been established here. Their provenance and original filenames are recorded in [Hardware facts](hardware.md#sources-and-reference-assets). They are excluded from MIT.
+`docs/images/radio-front.jpg`, `radio-chinese-ui.png`, and `pcb-buttons.jpg` come from the [ATS Mini community documentation](https://github.com/esp32-si4732/ats-mini/tree/ab4f5dc8120767cbb134b70096929f74c49df3e7/docs/source/_static). These photographs retain their upstream ownership; a uniform image license has not been established here. Their provenance and original filenames are recorded in [Hardware facts](hardware-ats.md#sources-and-reference-assets). They are excluded from MIT.
 
 `docs/images/screen-frequency.png` and `screen-rds.png` are framebuffer exports of this project's firmware, produced by `tools/capture_screen.py`. RDS strings in a screenshot are received broadcast content, not project-authored text or an endorsement of the broadcaster.
 
