@@ -270,6 +270,7 @@ void ui_draw(const ui_view_t* view) {
     g.setCursor(258, 95); if (stable) g.printf("P%u", signal.pilot); else g.print("P--");
   }
   if (failed) { g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(8, 115); g.print(view->error); }
+  else if (view->notice) { g.setTextColor(TFT_YELLOW, TFT_BLACK); g.setCursor(8, 115); g.print(view->notice); }
   drawRuler(g, model);
   if (buffered) frame.pushSprite(0, 0);
 }

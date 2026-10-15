@@ -32,6 +32,8 @@ static bool muted = false, dirty = true, lcd = false, buffered = false, failed =
 static bool screenshot_requested = false;
 static bool reconfigure = true, held = false, previous_pressed = false, audio_ready = false, seek_mode = false;
 static int pending_seek = 0, seek_direction = 0;
+static bool long_pending = false, power_pending = false;
+enum { LONG_PRESS_MS = 650, POWER_OFF_MS = 2000 };
 static uint32_t pressed_at = 0, edited_at = 0, last_signal = 0, last_battery = 0, last_draw = 0, last_tune = 0, last_rds = 0;
 
 static int clamp(int value, int low, int high) { return value < low ? low : value > high ? high : value; }
@@ -75,6 +77,17 @@ static void remember_settings(uint32_t now) {
     last_save_attempt = 0; ++settings_writes; serial_println("Settings: saved");
   } else serial_println("Settings: save failed; retry in 10s");
 }
+// Writes changed settings now, ignoring the debounce; for power off.
+static bool flush_settings(void) {
+  uint8_t bytes[RADIO_SETTINGS_SIZE];
+  if (!storage_ready) return true; // Nothing can be saved; do not trap the user.
+  if (!encode_current(bytes)) return false;
+  if (settings_stored && !memcmp(bytes, stored_settings, sizeof bytes)) return true;
+  if (!hal_settings_save(&storage, bytes, sizeof bytes)) return false;
+  memcpy(stored_settings, bytes, sizeof bytes); memcpy(observed_settings, bytes, sizeof bytes);
+  settings_stored = true; save_pending = false; ++settings_writes;
+  return true;
+}
 static const char* radio_message(void) {
   return rds_enhanced_text(&chip.rds)[0] ? rds_enhanced_text(&chip.rds) : rds_radio_text(&chip.rds);
 }
@@ -109,6 +122,7 @@ static void draw(void) {
   view.pending = reconfigure || chip.tuning || chip.seeking || chip.confirmed_hz != radio_model_frequency(&model);
   view.seek_arrow = seek_mode && (chip.seeking || pending_seek) ? (pending_seek ? pending_seek : seek_direction) : 0;
   view.audio_status_known = chip.signal.quality_known && !reconfigure && !chip.tuning && !chip.seeking;
+  view.notice = power_pending ? "Release to power off" : NULL;
   ui_draw(&view);
 }
 static void fail(void) {
@@ -214,17 +228,40 @@ static void serial_input(void) {
   }
 }
 static void log_line(const char* line) { serial_println(line); }
+#if BOARD_CAN_POWER_OFF
+static void power_off(void) {
+  if (!flush_settings()) { serial_println("Power off cancelled: settings not saved"); dirty = true; return; }
+  serial_println("Power off");
+  board_audio_set_muted(true);
+  si473x_power_down(&chip);
+  board_power_off();
+}
+#endif
 static void button_input(uint32_t now) {
   board_button_update(now);
   const bool pressed = board_button_pressed();
   if (pressed && !previous_pressed) {
-    pressed_at = now; held = false;
+    pressed_at = now; held = long_pending = power_pending = false;
     if (chip.seeking || pending_seek) { stop_seek(true); held = true; }
   }
-  if (pressed && !held && now - pressed_at >= 650) {
-    held = true; long_press();
+  if (pressed && !held) {
+#if BOARD_CAN_POWER_OFF
+    // Long-press actions wait for release so that a longer hold can power off.
+    if (now - pressed_at >= POWER_OFF_MS) { if (!power_pending) { power_pending = true; dirty = true; } }
+    else if (now - pressed_at >= LONG_PRESS_MS) long_pending = true;
+#else
+    if (now - pressed_at >= LONG_PRESS_MS) { held = true; long_press(); }
+#endif
   }
-  if (!pressed && previous_pressed && !held) short_press();
+  if (!pressed && previous_pressed && !held) {
+#if BOARD_CAN_POWER_OFF
+    if (power_pending) power_off();
+    else if (long_pending) long_press();
+    else
+#endif
+    short_press();
+  }
+  if (!pressed) long_pending = power_pending = false;
   previous_pressed = pressed;
 }
 
@@ -238,11 +275,13 @@ void receiver_begin(void) {
   const bool radio_ready = board_radio_begin();
   board_radio_set_powered(true); board_radio_reset();
   si473x_init(&chip, board_radio_bus());
-  chip.log = log_line;
+  chip.log = log_line; chip.external_clock = BOARD_RADIO_EXTERNAL_CLOCK;
   failed = !si473x_begin(&chip);
   serial_printf("Receiver boot: board=%s LCD=%d framebuffer=%d largestblock=%u radiohw=%d I2C=0x%02x found=%d\n", BOARD_NAME, lcd, buffered,
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), radio_ready, chip.address, !failed);
   edited_at = millis() - 200;
+  // A key still held from power-on must be released before it acts.
+  previous_pressed = held = board_button_pressed();
   if (failed) fail();
 }
 void receiver_update(void) {

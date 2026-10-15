@@ -132,6 +132,23 @@ int main(void) {
   assert(has(bus, 3, 0x01,0x10,0x05) && has(bus, 3, 0x01,0x11,0x05) && has(bus, 3, 0x01,0x1f,0x05) && has(bus, 3, 0x01,0x31,0x05));
   assert(!has(bus, 6, 0x12,0,0x02,0x01,0x80,0x00));
 
+  // External 32.768 kHz RCLK: no XOSCEN, then REFCLK_FREQ/PRESCALE.
+  bus->command_count = 0;
+  si473x_t external; si473x_init(&external, interface); external.external_clock = true;
+  assert(si473x_begin(&external) && si473x_configure(&external, SI473X_FM, 18));
+  assert(has(bus, 3, 0x01,0x00,0x05) && !has(bus, 3, 0x01,0x10,0x05));
+  assert(has(bus, 6, 0x12,0,0x02,0x01,0x80,0x00) && has(bus, 6, 0x12,0,0x02,0x02,0,1));
+  bus->command_count = 0;
+  assert(si473x_configure(&external, SI473X_USB, 18) && external.revision.patch == 0xA902);
+  assert(has(bus, 3, 0x01,0x0f,0x05) && has(bus, 3, 0x01,0x21,0x05));
+  // Properties are only valid after the patch download.
+  size_t last_patch = 0, reference = 0;
+  for (size_t i = 0; i < bus->command_count; ++i) {
+    const uint8_t* bytes = bus->commands[i].bytes;
+    if (bytes[0] == 0x15 || bytes[0] == 0x16) last_patch = i;
+    if (bus->commands[i].size == 6 && bytes[0] == 0x12 && bytes[2] == 0x02 && bytes[3] == 0x01) reference = i;
+  }
+  assert(last_patch && reference > last_patch);
   puts("Driver commands, RDS FIFO, tuning invalidation and reception settings passed");
   return 0;
 }

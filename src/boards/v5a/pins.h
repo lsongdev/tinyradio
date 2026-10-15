@@ -1,0 +1,24 @@
+#pragma once
+// GeekNest V5A (classic ESP32, yoRadio mapping). GPIO34-39 are input-only with
+// no internal pull-ups; the board supplies them.
+enum {
+  PIN_POWER_HOLD = 4,          // Latches the battery supply; must go high first.
+  PIN_TFT_SCLK = 18, PIN_TFT_MOSI = 19, PIN_TFT_CS = 22, PIN_TFT_DC = 23,
+  PIN_BACKLIGHT = 21,
+  PIN_SELECT = 35, PIN_UP = 32,
+  PIN_DOWN = 12,               // Pulled-up key; also the VDD_SDIO strapping pin.
+  PIN_ENCODER_A = 38, PIN_ENCODER_B = 37, PIN_ENCODER_BUTTON = 36,
+  PIN_BATTERY = 39,
+  PIN_I2C_SDA = 13, PIN_I2C_SCL = 15,
+};
+#define BATTERY_DIVIDER 2.0f      // R21 = R22 = 100k; BAT_ADC = BAT_IN / 2.
+#define BATTERY_CALIBRATION 1.0f
+
+// XL9555 and Si5351 (25 MHz crystal) on the shared I2C bus.
+#define EXPANDER_ADDRESS 0x20
+#define CLOCK_ADDRESS 0x60
+enum {
+  EXPANDER_RADIO_RESET = 0x01,  // Port 0 bit 0: SI4732 RST, active low.
+  EXPANDER_AMP_SHUTDOWN = 0x20, // Port 1 bit 5: amplifier SHUTDOWN, active high.
+  EXPANDER_ANALOG_AUDIO = 0x40, // Port 1 bit 6: route SI4732 analog audio to the amplifier.
+};

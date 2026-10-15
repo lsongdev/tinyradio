@@ -21,6 +21,7 @@ typedef struct {
   const char* ps;               // Confirmed PS, or "".
   const char* message;          // Confirmed eRT, else RT, or "".
   const char* error;            // Shown only when failed.
+  const char* notice;           // Transient prompt, or NULL.
   bool failed;
   bool pending;                 // Configuring, tuning, seeking, or not yet at the requested frequency.
   bool seeking;                 // The chip is searching.
