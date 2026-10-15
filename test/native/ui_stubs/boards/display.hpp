@@ -9,7 +9,10 @@
 
 namespace render_test {
 enum Surface { PANEL, FRAME, EXTRAS };
-struct Draw { Surface surface; std::string operation; int x, y; uint16_t color, background; std::string text; };
+struct Draw {
+  Surface surface; std::string operation; int x, y; uint16_t color, background; std::string text;
+  int width = 0, height = 0;
+};
 extern std::vector<Draw> draws;
 extern bool frame_available, extras_available;
 }
@@ -23,12 +26,13 @@ public:
   render_test::Surface surface = render_test::PANEL;
   uint16_t ink = 0, background = 0;
   int cursor_x = 0, cursor_y = 0;
-  void record(const char* operation, int x, int y, uint16_t color, const char* text = "") {
-    render_test::draws.push_back({surface, operation, x, y, color, background, text});
+  void record(const char* operation, int x, int y, uint16_t color, const char* text = "", int width = 0, int height = 0) {
+    render_test::draws.push_back({surface, operation, x, y, color, background, text, width, height});
   }
   void drawCircle(int x, int y, int, uint16_t c) { record("circle", x, y, c); }
+  void fillCircle(int x, int y, int, uint16_t c) { record("dot", x, y, c); }
   void drawLine(int x, int y, int, int, uint16_t c) { record("line", x, y, c); }
-  void drawRect(int x, int y, int, int, uint16_t c) { record("rect", x, y, c); }
+  void drawRect(int x, int y, int width, int height, uint16_t c) { record("rect", x, y, c, "", width, height); }
   void fillRect(int x, int y, int, int, uint16_t c) { record("fill", x, y, c); }
   void drawFastVLine(int x, int y, int, uint16_t c) { record("vline", x, y, c); }
   void drawFastHLine(int x, int y, int, uint16_t c) { record("hline", x, y, c); }

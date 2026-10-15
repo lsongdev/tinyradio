@@ -49,9 +49,9 @@ Replace `PORT` with the receiver's USB serial port. Close other serial monitors 
 | MW | 520–1710 kHz | AM, LSB, USB |
 | SW | 1.711–30 MHz (beyond the chip's 2.3–26.1 MHz specification at both ends) | AM, LSB, USB |
 | VHF | 64–108 MHz | FM |
-| AIR | 118–137 MHz, GeekNest V5A only; grayed out elsewhere | AM (no seek) |
+| AIR | 118–137 MHz, GeekNest V5A only; hidden on ATS Mini | AM (no seek) |
 
-Unavailable bands and modes are gray and skipped during selection. The SSB patch enables LSB/USB; it does not enable VHF aviation reception.
+Unsupported bands are hidden. Unavailable modes are gray. Both are skipped during selection. The SSB patch enables LSB/USB; it does not enable VHF aviation reception.
 
 Manual tuning crosses from one band to the next at its endpoint. It stops at the overall limits of 153 kHz and 108 MHz, without wrapping. Directly selecting a band restores its remembered frequency, mode, and step.
 
@@ -80,7 +80,7 @@ At band boundaries, the ruler reserves space for names such as SW and VHF. Blank
 
 ### Colors and volume
 
-Dark is the default theme. Focus Brightness and long-press to switch themes. Light mode uses a white background and darker foreground colors for contrast.
+Dark is the default theme. Focus Brightness and long-press to switch themes. Light mode uses a cool near-white background, dark slate text, a deep teal accent, and darker state colors for contrast.
 
 - **Yellow (dark) / amber (light):** focused value controlled by the encoder.
 - **Cyan (dark) / teal (light):** brand accent for selected options, normal control borders, and spectrum bars (unselected band borders stay gray); a speaker in this color indicates stereo blend.
@@ -88,7 +88,7 @@ Dark is the default theme. Focus Brightness and long-press to switch themes. Lig
 - **Magenta (dark) / purple (light):** active state, shared by seek mode/direction, band lock, engaged soft mute, and external power. Band lock and soft mute change only the text; their borders retain focus/selection color.
 - **Red crossed speaker:** muted.
 
-The speaker's wave lines represent volume: none at zero, one through 33%, two through 67%, and three above 67%. When Volume is focused, its percentage uses the focus highlight while the icon keeps its mono/stereo color.
+Mono uses the speaker outline; stereo uses a center dot with symmetric waves on both sides in the same 15 × 11 pixel area. Muted or unknown audio status uses the speaker outline. The wave count on each side represents volume: none at zero, one through 33%, two through 67%, and three above 67%. When Volume is focused, its percentage uses the focus highlight while the icon keeps its mono/stereo color.
 
 ### Signal indicators
 

@@ -5,6 +5,7 @@ extern "C" {
 #include "services/spectrum.h"
 }
 #include <cassert>
+#include <cmath>
 
 namespace render_test {
 std::vector<Draw> draws;
@@ -23,7 +24,36 @@ static const Draw& find(Surface surface, const char* operation, int x, int y) {
   assert(false && "Missing draw operation");
   return draws.front();
 }
+static void checkSignalRow(Surface surface, bool fm) {
+  const auto& sm = find(surface, "rect", 258, 70);
+  const auto& step = find(surface, "rect", 258, 91);
+  assert(step.width == sm.width && step.height == sm.height);
+  int previousRight = 35, count = 0;
+  for (const auto& draw : draws) {
+    if (draw.surface != surface || draw.operation != "text" || draw.y != 95) continue;
+    assert(draw.x > previousRight); // Readings must also be separated from the bars.
+    previousRight = draw.x + board_display_device().textWidth(draw.text.c_str());
+    assert(previousRight <= 252); // Clear the Step control and its six-pixel gap.
+    ++count;
+  }
+  assert(count == (fm ? 6 : 5) && previousRight == 252);
+}
+static double luminance(uint16_t rgb) {
+  const int red = (rgb >> 11) & 31, green = (rgb >> 5) & 63, blue = rgb & 31;
+  const auto linear = [](int channel) {
+    const double value = channel / 255.0;
+    return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+  };
+  return .2126 * linear((red << 3) | (red >> 2)) + .7152 * linear((green << 2) | (green >> 4)) +
+         .0722 * linear((blue << 3) | (blue >> 2));
+}
 int main() {
+  const auto& light = *ui_theme_get(UI_THEME_LIGHT);
+  for (auto color : {light.text_primary, light.text_secondary, light.text_muted, light.control_disabled,
+                     light.accent, light.control_focus, light.status_positive, light.status_danger,
+                     light.status_notice, light.audio_muted, light.audio_stereo, light.active,
+                     light.ruler_current, light.ruler_adjacent})
+    assert((luminance(light.background) + .05) / (luminance(color) + .05) >= 4.5);
   radio_model_t model; radio_model_init(&model);
   uint8_t bars[SPECTRUM_BARS]; memset(bars, 128, sizeof bars);
   ui_view_t view{};
@@ -58,16 +88,21 @@ int main() {
       assert(find(main, "rect", 3, 2).color == theme.text_secondary); // Unselected band stays gray.
       assert(find(main, "text", 16, 10).color == theme.text_secondary);
       assert(find(main, "rect", 87, 2).color == theme.accent); // Selected band.
-      assert(find(main, "rect", 115, 2).color == theme.control_disabled); // AIR unavailable.
       assert(find(main, "rect", 3, 70).color == theme.accent); // Selected FM mode.
       assert(find(main, "rect", 31, 70).color == theme.control_disabled); // AM unavailable.
       assert(find(main, "rect", 117, 70).color == theme.accent); // BW control.
-      assert(find(main, "rect", 278, 91).color == theme.accent); // Step control.
+      assert(find(main, "rect", 258, 91).color == theme.accent); // Step aligns with SM.
       assert(find(extra, "fill", 12, extra_top + 24).color == theme.accent); // Spectrum bar.
-      assert(find(main, "rect", 232, 8).color == theme.audio_stereo);
+      assert(find(main, "dot", 239, 10).color == theme.audio_stereo);
+      checkSignalRow(main, true);
       assert(find(extra, "fill", 0, extra_top).color == theme.background);
-      for (const auto& draw : draws)
-        if (draw.operation == "text") assert(draw.background == theme.background);
+      for (const auto& draw : draws) {
+        if (draw.operation == "text") {
+          assert(draw.background == theme.background);
+          assert(draw.text != "AIR"); // Unsupported bands are hidden, not grayed out.
+        }
+        assert(!(draw.surface == main && draw.operation == "rect" && draw.x == 115 && draw.y == 2));
+      }
       draws.clear(); ui_draw_extras(&view);
       assert(draws.empty()); // The unchanged extras are still cached within a theme.
     }
@@ -76,6 +111,25 @@ int main() {
     assert(find(main, "rect", 232, 8).color == ui_theme_get(view.theme)->audio_muted);
     assert(find(main, "text", 248, 7).color == ui_theme_get(view.theme)->control_focus);
     view.muted = false; view.field = UI_FIELD_SOFT_MUTE;
+  }
+  radio_set_band_available(RADIO_BAND_AIR, true); // The V5A enables AIR during startup.
+  draws.clear(); ui_draw(&view);
+  assert(find(PANEL, "rect", 115, 2).color == ui_theme_get(view.theme)->text_secondary);
+  assert(find(PANEL, "text", 128, 10).text == "AIR");
+  radio_set_band_available(RADIO_BAND_AIR, false);
+  // Keep all readings visible at their longest values, during transitions, and without FM's pilot.
+  view.signal.rssi = view.signal.snr = view.signal.gain_index = 255;
+  view.signal.valid = false;
+  for (auto id : {UI_THEME_DARK, UI_THEME_LIGHT}) {
+    view.theme = id;
+    for (size_t band : {size_t(3), size_t(1)}) {
+      assert(radio_model_set_band(&model, band));
+      for (int state = 0; state < 3; ++state) {
+        view.pending = state == 1; view.failed = state == 2;
+        draws.clear(); ui_draw(&view);
+        checkSignalRow(PANEL, radio_model_band(&model)->fm);
+      }
+    }
   }
   puts("UI themes: shared brand accent and active colors, state overrides, backgrounds and extras cache passed");
 }
