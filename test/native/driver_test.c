@@ -15,7 +15,7 @@ typedef struct {
   size_t fifo_head, fifo_count;
   bool synced;
   uint8_t tx[8], tx_size;
-  uint16_t carrier;
+  uint16_t carrier, volume, hard_mute;
 } fake_bus_t;
 
 static bool fake_write(void* context, uint8_t address, const uint8_t* data, size_t size) {
@@ -27,6 +27,11 @@ static bool fake_write(void* context, uint8_t address, const uint8_t* data, size
     bus->commands[bus->command_count].size = (uint8_t)size;
     memcpy(bus->commands[bus->command_count++].bytes, data, size);
     if (data[0] == 0x20 || data[0] == 0x40) bus->carrier = data[2] << 8 | data[3];
+    if (size == 6 && data[0] == 0x12 && data[2] == 0x40) {
+      const uint16_t value = data[4] << 8 | data[5];
+      if (data[3] == 0) bus->volume = value;
+      if (data[3] == 1) bus->hard_mute = value;
+    }
     if (data[0] == 0x24 && data[1] == 3) bus->fifo_count = 0;
   }
   return true;
@@ -89,8 +94,16 @@ int main(void) {
   const rds_decoder_t* rds = &chip->rds;
   device_clock_t clock = {0}; rds_clock_sync_t sync = {0};
   assert(si473x_begin(chip) && si473x_configure(chip, SI473X_FM, 18));
+  assert(bus->hard_mute == 3 && bus->volume == 18);
   assert(has(bus, 6, 0x12,0,0x15,2,0xaa,1));
   assert(has(bus, 6, 0x12,0,0x15,0,0,1) && has(bus, 6, 0x12,0,0x15,1,0,1));
+  assert(si473x_tune(chip, 100000000) && settle(chip));
+  assert(bus->hard_mute == 3); // Tuning must not unmute before the application is ready.
+  assert(si473x_set_muted(chip, false) && bus->hard_mute == 0 && bus->volume == 18);
+  assert(si473x_set_muted(chip, true) && bus->hard_mute == 3 && bus->volume == 18);
+  assert(si473x_set_volume(chip, 23) && bus->hard_mute == 3 && bus->volume == 23);
+  assert(si473x_set_muted(chip, false) && bus->hard_mute == 0 && bus->volume == 23);
+  assert(si473x_configure(chip, SI473X_FM, 18) && bus->hard_mute == 3); // Same engine too.
   assert(si473x_tune(chip, 100000000) && settle(chip));
   assert(reception(chip, 1, 26, 31)); assert(chip->bandwidth_hz == 40000);
   assert(has(bus, 6, 0x12,0,0x11,2,0,4)); assert(has(bus, 3, 0x28,1,26));
@@ -124,8 +137,10 @@ int main(void) {
   rds_clock_sync_update(&sync, rds_clock_time(rds), &clock, 602000);
   assert(device_clock_read(&clock, 602000).valid && device_clock_read(&clock, 602000).utc_seconds == first_time + 601);
   assert(si473x_configure(chip, SI473X_AM, 18) && reception(chip, 0, 37, 8));
+  assert(bus->hard_mute == 3 && bus->volume == 18);
   assert(chip->bandwidth_hz == 1000 && has(bus, 6, 0x12,0,0x31,2,0,4) && has(bus, 3, 0x48,1,37));
   assert(si473x_configure(chip, SI473X_USB, 18) && reception(chip, 0, -1, 0));
+  assert(bus->hard_mute == 3 && bus->volume == 18);
   assert(chip->bandwidth_hz == 500 && has(bus, 6, 0x12,0,1,1,0x90,4) && has(bus, 3, 0x48,0,0));
   assert(reception(chip, 3, -1, 0) && has(bus, 6, 0x12,0,1,1,0x90,0x11));
   // The crystal configuration enables XOSCEN in every POWER_UP and never sets REFCLK.

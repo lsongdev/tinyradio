@@ -20,7 +20,7 @@ For board-specific information, see [Hardware facts](hardware-ats.md). Source bu
 
 ## Installing or updating firmware
 
-Download the install ZIP from the [releases page](https://github.com/lsongdev/ats-mini/releases). Successful `master` builds update the prerelease for that Shanghai calendar day. Check your board against the [supported hardware](hardware-ats.md) and follow `FLASHING.txt` in the ZIP.
+Download the install ZIP from the [releases page](https://github.com/lsongdev/tinyradio/releases). Successful `master` builds update the prerelease for that Shanghai calendar day. Check your board against the [supported hardware](hardware-ats.md) and follow `FLASHING.txt` in the ZIP.
 
 | File | Purpose |
 | --- | --- |
@@ -65,11 +65,12 @@ Manual tuning crosses from one band to the next at its endpoint. It stops at the
 | Rotate in seek mode | Search up/down within the current band |
 | Short-press in seek mode | Cancel search at the current frequency, return to manual tuning, and keep Frequency focused |
 | Long-press Volume | Toggle mute while retaining the chosen volume |
+| Long-press Brightness | Switch between dark and light themes; the choice is saved |
 | Long-press Band | Lock or unlock the current band: manual tuning stops at its edges instead of crossing |
 | Short-press on receiver error | Reset the radio chip and retry |
 | Hold 3 s (V5A) | `Release to power off` appears; releasing saves settings and powers off. Press the encoder to switch on. On the V5A, long-press actions run on release so a longer hold can power off |
 
-A long press lasts approximately 650 ms. Releasing it does not generate a second short press. A locked band's name turns orange; the lock follows band changes and is cleared at power-on. A key held while the radio starts must be released before it acts. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow. Station text remains visible in idle seek mode; an active search temporarily shows frequency instead.
+A long press lasts approximately 650 ms. Releasing it does not generate a second short press. A locked band's name uses the active-state color; the lock follows band changes and is cleared at power-on. A key held while the radio starts must be released before it acts. Seek is unavailable in LSB/USB; seek mode uses the active-state color, while ordinary focus has its own highlight. Station text remains visible in idle seek mode; an active search temporarily shows frequency instead.
 
 ## Reading the screen
 
@@ -79,14 +80,15 @@ At band boundaries, the ruler reserves space for names such as SW and VHF. Blank
 
 ### Colors and volume
 
-- **Yellow:** focused value controlled by the encoder.
-- **Cyan:** active option; a cyan speaker indicates stereo blend.
-- **Gray:** unavailable option; a light-gray speaker indicates mono, and a dark-gray speaker means quality status is not yet known.
-- **Magenta:** seek mode and search direction.
-- **Orange SM text:** soft mute is currently attenuating audio; its border retains focus/selection color.
+Dark is the default theme. Focus Brightness and long-press to switch themes. Light mode uses a white background and darker foreground colors for contrast.
+
+- **Yellow (dark) / amber (light):** focused value controlled by the encoder.
+- **Cyan (dark) / teal (light):** brand accent for selected options, normal control borders, and spectrum bars (unselected band borders stay gray); a speaker in this color indicates stereo blend.
+- **Gray:** unavailable option or unknown status; a normal speaker indicates mono.
+- **Magenta (dark) / purple (light):** active state, shared by seek mode/direction, band lock, engaged soft mute, and external power. Band lock and soft mute change only the text; their borders retain focus/selection color.
 - **Red crossed speaker:** muted.
 
-The speaker's wave lines represent volume: none at zero, one through 33%, two through 67%, and three above 67%. When Volume is focused, its percentage becomes yellow while the icon keeps its mono/stereo color.
+The speaker's wave lines represent volume: none at zero, one through 33%, two through 67%, and three above 67%. When Volume is focused, its percentage uses the focus highlight while the icon keeps its mono/stereo color.
 
 ### Signal indicators
 
@@ -150,13 +152,13 @@ A fine step does not improve absolute frequency accuracy or enforce a broadcast 
 
 ## Saved settings
 
-After two seconds without adjustments, once tuning/search has completed, the receiver saves current band, each band's frequency/mode/step, BW/AGC/SM, volume, brightness, and mute to NVS. Startup restores them; focus starts on Frequency and seek starts off.
+After two seconds without adjustments, once tuning/search has completed, the receiver saves current band, each band's frequency/mode/step, BW/AGC/SM, volume, brightness, mute, and theme to NVS. Startup restores them; focus starts on Frequency and seek starts off.
 
 Normal firmware updates preserve NVS. If you switch off within the two-second save delay, the latest adjustment may not be retained. Invalid or incompatible saved data falls back to defaults.
 
 ## Battery estimate
 
-The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered. When external power is detected, the status bar shows a full cyan battery icon and `USB`; the full icon indicates USB power rather than measured cell charge. An implausible voltage reading shows `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware-ats.md#battery-indication) for calibration and measurement limits.
+The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered. When external power is detected, the status bar shows a full battery icon in the active-state color and `USB`; the full icon indicates USB power rather than measured cell charge. An implausible voltage reading shows `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware-ats.md#battery-indication) for calibration and measurement limits.
 
 ## Screenshots
 

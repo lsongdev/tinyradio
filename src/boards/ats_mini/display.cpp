@@ -41,10 +41,9 @@ bool board_display_begin(void) {
   digitalWrite(PIN_BACKLIGHT, LOW);
   if (!panel.init()) return false;
   panel.setRotation(3); // 320 x 170 landscape; confirmed orientation on user's unit
-  panel.fillScreen(TFT_BLACK);
   ledcSetup(0, 5000, 8);
   ledcAttachPin(PIN_BACKLIGHT, 0);
-  board_display_set_brightness(128);
+  // The application paints the theme background before enabling the backlight.
   return true;
 }
 void board_display_set_brightness(uint8_t value) { ledcWrite(0, value); }

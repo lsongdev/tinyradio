@@ -11,6 +11,15 @@ static bool encodes(const radio_settings_t* settings) {
   uint8_t bytes[RADIO_SETTINGS_SIZE];
   return radio_settings_encode(settings, bytes);
 }
+static void checksum(uint8_t bytes[RADIO_SETTINGS_SIZE]) {
+  uint32_t value = 0xffffffff;
+  for (size_t i = 0; i < RADIO_SETTINGS_SIZE - 4; ++i) {
+    value ^= bytes[i];
+    for (int bit = 0; bit < 8; ++bit) value = (value >> 1) ^ ((value & 1) ? 0xedb88320 : 0);
+  }
+  value = ~value;
+  for (int i = 0; i < 4; ++i) bytes[RADIO_SETTINGS_SIZE - 4 + i] = value >> (i * 8);
+}
 int main(void) {
   radio_model_t source; radio_model_init(&source);
   radio_model_set_band(&source, 0); radio_model_set_frequency(&source, 162000); radio_model_turn_step(&source, 1);
@@ -18,8 +27,10 @@ int main(void) {
   radio_model_set_band(&source, 3); radio_model_set_frequency(&source, 103700000); radio_model_turn_step(&source, 1);
   radio_model_set_band(&source, 2); radio_model_set_mode(&source, SI473X_USB); radio_model_set_frequency(&source, 7100123); radio_model_turn_step(&source, 2);
   radio_settings_t settings; radio_settings_default(&settings);
+  assert(!settings.light_theme);
   settings.tuning = radio_model_state(&source);
   settings.volume = 37; settings.brightness = 208; settings.muted = true;
+  settings.light_theme = true;
   settings.reception[0] = reception(4,26,31); settings.reception[1] = reception(6,37,1);
   settings.reception[2] = reception(0,-1,0); settings.reception[3] = reception(5,12,8);
   uint8_t encoded[RADIO_SETTINGS_SIZE], reencoded[RADIO_SETTINGS_SIZE];
@@ -28,6 +39,7 @@ int main(void) {
   assert(radio_settings_decode(encoded, &loaded));
   assert(radio_settings_encode(&loaded, reencoded) && !memcmp(encoded, reencoded, sizeof encoded));
   assert(loaded.volume == 37 && loaded.brightness == 208 && loaded.muted);
+  assert(loaded.light_theme);
   radio_model_t restored; radio_model_init(&restored);
   assert(radio_model_restore(&restored, &loaded.tuning) && restored.band == 2);
   for (size_t i = 0; i < 4; ++i) {
@@ -39,8 +51,19 @@ int main(void) {
   for (size_t i = 0; i < sizeof encoded; ++i) {
     uint8_t damaged[RADIO_SETTINGS_SIZE]; memcpy(damaged, encoded, sizeof damaged); damaged[i] ^= 1;
     assert(!radio_settings_decode(damaged, &loaded));
-    assert(loaded.volume == 37 && loaded.tuning.band == 2);
+    assert(loaded.volume == 37 && loaded.tuning.band == 2 && loaded.light_theme);
   }
+  // Version 1 used this byte as reserved space: preserve tuning and default dark.
+  uint8_t legacy[RADIO_SETTINGS_SIZE]; memcpy(legacy, encoded, sizeof legacy);
+  legacy[4] = 1; legacy[11] = 0; checksum(legacy);
+  assert(radio_settings_decode(legacy, &loaded) && !loaded.light_theme);
+  assert(loaded.volume == 37 && loaded.brightness == 208 && loaded.muted && loaded.tuning.band == 2);
+  // Reject an unknown theme even when the checksum is valid, without changing output.
+  uint8_t invalid_theme[RADIO_SETTINGS_SIZE]; memcpy(invalid_theme, encoded, sizeof invalid_theme);
+  invalid_theme[11] = 2; checksum(invalid_theme);
+  assert(!radio_settings_decode(invalid_theme, &loaded) && !loaded.light_theme && loaded.volume == 37);
+  settings.light_theme = false;
+  assert(radio_settings_encode(&settings, reencoded) && radio_settings_decode(reencoded, &loaded) && !loaded.light_theme);
   radio_settings_t invalid = settings;
   invalid.tuning.band = 4; assert(!encodes(&invalid));
   invalid = settings; invalid.tuning.memories[0].mode = SI473X_FM; assert(!radio_model_restore(&restored, &invalid.tuning));

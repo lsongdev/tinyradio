@@ -46,10 +46,9 @@ bool board_display_begin(void) {
   if (!panel.init()) return false;
   ready = true;
   panel.setRotation(1); // 320 x 240 landscape; confirmed upright on the V5A.
-  panel.fillScreen(TFT_BLACK);
   ledcSetup(0, 5000, 8);
   ledcAttachPin(PIN_BACKLIGHT, 0);
-  board_display_set_brightness(128);
+  // The application paints the theme background before enabling the backlight.
   // GPIO12 is pulled-up key C; restore its pull-up after SPI setup, as the
   // original firmware does.
   pinMode(PIN_KEY_C, INPUT_PULLUP);

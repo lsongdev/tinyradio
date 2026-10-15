@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include "theme.h"
 #include "drivers/si473x/si473x.h"
 #include "hal/battery.h"
 #include "hal/environment.h"
@@ -15,6 +16,7 @@ typedef enum {
 typedef struct {
   const radio_model_t* model;
   ui_field_t field;
+  ui_theme_id_t theme;
   int volume, brightness;
   bool muted;
   hal_battery_reading_t supply;
@@ -42,7 +44,8 @@ typedef struct {
 // area below it (audio spectrum, date, time, environment).
 // Call after board_display_begin(). Returns false when the frame buffer is
 // unavailable; drawing then goes directly to the panel and capture is disabled.
-bool ui_begin(void);
+// Paints the initial background; enable the backlight after this returns.
+bool ui_begin(ui_theme_id_t theme);
 void ui_draw(const ui_view_t* view);
 // Redraws only the extras area (nothing on panels without one), e.g. for a new spectrum.
 void ui_draw_extras(const ui_view_t* view);

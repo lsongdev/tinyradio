@@ -23,6 +23,7 @@ static rds_clock_sync_t rds_clock_sync;
 static ui_field_t field = UI_FIELD_FREQUENCY;
 static int volume = 18, applied_volume = -1;
 static int brightness = 128;
+static ui_theme_id_t theme = UI_THEME_DARK;
 static si473x_reception_t reception[4] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
 static bool reception_dirty = true;
 static bool band_locked = false; // Session only; not saved.
@@ -57,6 +58,7 @@ static radio_settings_t saved_settings(void) {
   radio_settings_default(&saved);
   saved.tuning = radio_model_state(&model);
   saved.volume = volume; saved.brightness = brightness; saved.muted = muted;
+  saved.light_theme = theme == UI_THEME_LIGHT;
   memcpy(saved.reception, reception, sizeof reception);
   return saved;
 }
@@ -70,6 +72,7 @@ static void load_settings(void) {
   radio_settings_t saved;
   if (storage_ready && hal_settings_load(&storage, SETTINGS_KEY, bytes, sizeof bytes) && radio_settings_decode(bytes, &saved)) {
     radio_model_restore(&model, &saved.tuning); volume = saved.volume; brightness = saved.brightness; muted = saved.muted;
+    theme = saved.light_theme ? UI_THEME_LIGHT : UI_THEME_DARK;
     memcpy(reception, saved.reception, sizeof reception);
     settings_stored = true;
   }
@@ -130,9 +133,9 @@ static void report(void) {
   char clock_text[6]; format_clock(clock_text, hal_monotonic_ms());
   const rds_clock_time_t* ct = rds_clock_time(&chip.rds);
   const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
-  serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu supply=%.3f adc=%lu locked=%d env=%d temp=%ld rh=%lu error=%s\n",
+  serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d theme=%s mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu supply=%.3f adc=%lu locked=%d env=%d temp=%ld rh=%lu error=%s\n",
     radio_model_band(&model)->name, si473x_mode_name(radio_model_mode(&model)), (unsigned long)radio_model_frequency(&model),
-    (unsigned long)confirmed_rf(), (unsigned long)radio_model_step(&model), volume, brightness, muted, settings_stored, save_pending, (unsigned long)settings_writes,
+    (unsigned long)confirmed_rf(), (unsigned long)radio_model_step(&model), volume, brightness, theme == UI_THEME_LIGHT ? "light" : "dark", muted, settings_stored, save_pending, (unsigned long)settings_writes,
     chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, frontend_failed ? "RF front end failed" : si473x_error_text(&chip));
 }
 // extras_only redraws just the board extras area (spectrum updates).
@@ -145,7 +148,7 @@ static void draw(bool extras_only) {
              time.day % 32u, time.hour % 24u, time.minute % 60u, time.second % 60u);
   ui_view_t view;
   memset(&view, 0, sizeof view);
-  view.model = &model; view.field = field;
+  view.model = &model; view.field = field; view.theme = theme;
   view.volume = volume; view.brightness = brightness; view.muted = muted;
   view.supply = supply; view.battery_volts = battery_volts; view.clock = clock_valid ? clock_text : NULL;
   view.date_time = time.valid ? date_text : NULL;
@@ -164,6 +167,13 @@ static void fail(void) {
   failed = true; seek_mode = false; pending_seek = seek_direction = 0; audio_ready = false;
   board_audio_set_muted(true); board_speaker_set_enabled(false);
   dirty = true; report();
+}
+static bool set_audio_muted(bool value) {
+  // Some boards have no mute GPIO. Always mute the receiver too, including
+  // its headphone outputs, without changing the user's chosen volume.
+  board_audio_set_muted(value);
+  if (!si473x_set_muted(&chip, value)) { fail(); return false; }
+  return true;
 }
 static void changed_configuration(void) {
   if (chip.seeking && !si473x_cancel_seek(&chip)) fail();
@@ -203,13 +213,14 @@ static void adjust_frequency(int delta) {
   if (seek_mode) request_seek(delta); else tune_by(delta);
 }
 static void toggle_mute(void) {
-  muted = !muted; if (audio_ready) board_audio_set_muted(muted); dirty = true;
+  muted = !muted; if (audio_ready) set_audio_muted(muted); dirty = true;
 }
 static void long_press(void) {
   if (field == UI_FIELD_FREQUENCY) {
     if (seek_mode) stop_seek(true);
     else if (!failed && can_seek()) { seek_mode = true; dirty = true; }
   } else if (field == UI_FIELD_VOLUME) toggle_mute();
+  else if (field == UI_FIELD_BRIGHTNESS) { theme = theme == UI_THEME_DARK ? UI_THEME_LIGHT : UI_THEME_DARK; dirty = true; }
   else if (field == UI_FIELD_BAND) { band_locked = !band_locked; dirty = true; }
 }
 static void short_press(void) {
@@ -341,7 +352,7 @@ void receiver_begin(void) {
   load_settings();
   if (BOARD_HAS_RTC) restore_clock();
   lcd = board_display_begin();
-  if (lcd) { board_display_set_brightness(brightness); buffered = ui_begin(); }
+  if (lcd) { buffered = ui_begin(theme); board_display_set_brightness(brightness); }
   supply = board_battery_read();
   const bool radio_ready = board_radio_begin();
   board_radio_set_powered(true); board_radio_reset();
@@ -387,8 +398,8 @@ void receiver_update(void) {
     if (!failed && pending_seek && !chip.tuning && !chip.seeking && on_frequency()) {
       const radio_band_t* band = radio_model_band(&model);
       seek_direction = pending_seek; pending_seek = 0;
-      board_audio_set_muted(true); audio_ready = false;
-      if (!si473x_seek(&chip, seek_direction > 0, band->min_hz, band->max_hz, radio_model_step(&model))) fail();
+      audio_ready = false;
+      if (set_audio_muted(true) && !si473x_seek(&chip, seek_direction > 0, band->min_hz, band->max_hz, radio_model_step(&model))) fail();
       dirty = true;
     }
     if (!failed && !chip.tuning && !chip.seeking && !on_frequency() && now - last_tune >= 30) {
@@ -403,7 +414,8 @@ void receiver_update(void) {
       dirty = true;
     }
     if (!failed && !chip.tuning && !chip.seeking && !pending_seek && on_frequency() && !audio_ready) {
-      audio_ready = true; board_speaker_set_enabled(true); board_audio_set_muted(muted); dirty = true;
+      if (set_audio_muted(muted)) { audio_ready = true; board_speaker_set_enabled(true); }
+      dirty = true;
     }
     if (!failed && applied_volume != volume) {
       if (!si473x_set_volume(&chip, volume)) fail(); else applied_volume = volume;
