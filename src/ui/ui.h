@@ -4,10 +4,12 @@
 #include "hal/battery.h"
 #include "hal/environment.h"
 #include "radio/model.h"
-// Item with encoder focus, in short-press cycling order.
+// Item with encoder focus, in short-press cycling order: one loop around the
+// screen, from the band row down through the controls and back along the
+// status bar from right to left.
 typedef enum {
   UI_FIELD_BAND, UI_FIELD_FREQUENCY, UI_FIELD_MODE, UI_FIELD_BANDWIDTH, UI_FIELD_GAIN,
-  UI_FIELD_SOFT_MUTE, UI_FIELD_STEP, UI_FIELD_VOLUME, UI_FIELD_BRIGHTNESS, UI_FIELD_COUNT
+  UI_FIELD_SOFT_MUTE, UI_FIELD_STEP, UI_FIELD_BATTERY, UI_FIELD_VOLUME, UI_FIELD_BRIGHTNESS, UI_FIELD_COUNT
 } ui_field_t;
 // Everything one frame shows. The application fills it; the UI only reads it.
 typedef struct {
@@ -16,6 +18,7 @@ typedef struct {
   int volume, brightness;
   bool muted;
   hal_battery_reading_t supply;
+  bool battery_volts;           // Show the supply voltage instead of the percentage.
   const char* clock;            // Local "HH:MM", or NULL before the first synchronization.
   const char* date_time;        // Local "YYYY-MM-DD HH:MM:SS", or NULL.
   hal_environment_reading_t environment;

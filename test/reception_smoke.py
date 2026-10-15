@@ -37,7 +37,7 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
             return state
         raise AssertionError(f'Timeout: {command!r}, expected {expected}')
 
-    action('eee', focus=3, band='VHF', bw=0)
+    action('ee', focus=3, band='VHF', bw=0)
     action('>', focus=3, bw=40000, bwsel=1)
     action('>>>>', bw=0, bwsel=0)
     action('e>', focus=4, gainset=0, agc=0, gain=0)
@@ -47,7 +47,7 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
     action('>' * 40, smset=31)
     action('<' * 40, smset=0)
     action('>' * 16, smset=16)
-    action('eeeee1a', focus=1, band='MW', mode='AM', bw=3000, gainset=-1, smset=0)
+    action('eeeeee1a', focus=1, band='MW', mode='AM', bw=3000, gainset=-1, smset=0)
     action('ee>', focus=3, bw=4000)
     action('<', bw=3000)
     action('e>' + '>' * 40, focus=4, gainset=37, agc=0, gain=37)
@@ -55,7 +55,7 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
     action('e>', focus=5, smset=1)
     action('<', smset=0)
     action('2u', mode='USB', bw=2200, gainset=-1, smset=0)
-    action('eeeeeee>', focus=3, bw=3000)
+    action('eeeeeeee>', focus=3, bw=3000)
     action('<', bw=2200)
     action('e>', focus=4, gainset=0, agc=0, gain=0)
     action('<', gainset=-1, agc=1)

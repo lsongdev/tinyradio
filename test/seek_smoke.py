@@ -37,7 +37,7 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
             return state
         raise AssertionError(f'Timeout: {command!r}, expected {expected}')
 
-    action('e1a', focus=1, band='MW', mode='AM', confirmed=999000, seek=0)
+    action('1a', focus=1, band='MW', mode='AM', confirmed=999000, seek=0)
     action('h', focus=1, seek=1, searching=0)
     action('+', settled=False, searching=1)
     stopped = action('e', focus=1, seek=0, searching=0, result=4)
@@ -54,10 +54,11 @@ with serial.Serial(sys.argv[1], 115200, timeout=0.02) as port:
     action('+', seek=1, searching=0, result=3, confirmed=108000000)
     action('2u', mode='USB', seek=0, confirmed=7100000, bw=2200)
     action('h', focus=1, seek=0, searching=0)  # SSB refuses seek entry
-    action('eeeeee', focus=7)
-    action('h', focus=7, mute=1, seek=0)
-    action('h', focus=7, mute=0, seek=0)
-    action('eeh', focus=0, mute=0, seek=0)  # only volume long-press mutes
+    action('eeeeeee', focus=8)
+    action('h', focus=8, mute=1, seek=0)
+    action('h', focus=8, mute=0, seek=0)
+    action('eeh', focus=0, mute=0, seek=0, locked=1)  # only volume long-press mutes; Band locks
+    action('h', focus=0, mute=0, locked=0)
     action('e3f', focus=1, band='VHF', mode='FM', confirmed=108000000, bw=0)
     action('-' * 80, focus=1, confirmed=100000000, seek=0, mute=0)
     print('Seek smoke passed; VHF/FM 100MHz, frequency focus, manual mode', flush=True)
