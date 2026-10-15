@@ -20,7 +20,12 @@ typedef struct {
   uint8_t blend, gain_index;
   bool pilot, soft_muted, afc_rail, agc_enabled, quality_known;
 } si473x_signal_t;
-typedef struct { bool synchronized; uint8_t queued; uint32_t groups, overruns; } si473x_rds_status_t;
+typedef struct {
+  bool synchronized;
+  uint8_t queued;
+  uint32_t groups, overruns;
+  uint32_t usable_groups; // Groups with every block correctable (BLE 0..2), regardless of group type.
+} si473x_rds_status_t;
 typedef struct { uint8_t part, major, minor, component_major, component_minor, chip; uint16_t patch; } si473x_revision_t;
 // Fields after `external_clock` are driver state: read them, never write them.
 typedef struct {

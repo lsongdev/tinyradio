@@ -1,3 +1,4 @@
+#include "rds_activity.h"
 #include "receiver.h"
 #include "rds_clock.h"
 #include "boards/board.h"
@@ -26,6 +27,7 @@ static int brightness = 128;
 static ui_theme_id_t theme = UI_THEME_DARK;
 static bool theme_notice = false;
 static uint32_t theme_changed_at = 0;
+static rds_activity_t rds_activity;
 static si473x_reception_t reception[4] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
 static bool reception_dirty = true;
 static bool band_locked = false; // Session only; not saved.
@@ -135,10 +137,10 @@ static void report(void) {
   char clock_text[6]; format_clock(clock_text, hal_monotonic_ms());
   const rds_clock_time_t* ct = rds_clock_time(&chip.rds);
   const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
-  serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d theme=%s mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu supply=%.3f adc=%lu locked=%d env=%d temp=%ld rh=%lu error=%s\n",
+  serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d theme=%s mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsusable=%lu rdsoverruns=%lu supply=%.3f adc=%lu locked=%d env=%d temp=%ld rh=%lu error=%s\n",
     radio_model_band(&model)->name, si473x_mode_name(radio_model_mode(&model)), (unsigned long)radio_model_frequency(&model),
     (unsigned long)confirmed_rf(), (unsigned long)radio_model_step(&model), volume, brightness, ui_theme_name(theme), muted, settings_stored, save_pending, (unsigned long)settings_writes,
-    chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, frontend_failed ? "RF front end failed" : si473x_error_text(&chip));
+    chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.usable_groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, frontend_failed ? "RF front end failed" : si473x_error_text(&chip));
 }
 // extras_only redraws just the board extras area (spectrum updates).
 static void draw(bool extras_only) {
@@ -158,6 +160,7 @@ static void draw(bool extras_only) {
   view.spectrum = spectrum_known ? spectrum : NULL;
   view.signal = chip.signal; view.reception = *settings();
   view.rds_synchronized = chip.rds_status.synchronized;
+  view.rds_receiving = rds_activity.receiving;
   view.ps = rds_ps(&chip.rds); view.message = radio_message(); view.error = frontend_failed ? "RF front end failed" : si473x_error_text(&chip);
   view.failed = failed; view.seeking = chip.seeking; view.seek_mode = seek_mode; view.band_locked = band_locked;
   view.pending = reconfigure || chip.tuning || chip.seeking || !on_frequency();
@@ -436,6 +439,10 @@ void receiver_update(void) {
       last_signal = now; if (!si473x_read_signal(&chip)) fail(); dirty = true;
     }
   }
+  const bool was_receiving = rds_activity.receiving;
+  rds_activity_update(&rds_activity, &chip.rds_status,
+    !failed && !reconfigure && !chip.tuning && !chip.seeking && on_frequency(), now);
+  if (was_receiving != rds_activity.receiving) dirty = true;
   if (now - last_battery >= 1000) { last_battery = now; supply = board_battery_read(); dirty = true; }
   if (radio_message()[0] && now - last_draw >= 50) dirty = true;
   if (rds_clock_sync_update(&rds_clock_sync, rds_clock_time(&chip.rds), &device_clock, hal_monotonic_ms()) && BOARD_HAS_RTC)
