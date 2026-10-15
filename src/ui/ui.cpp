@@ -367,7 +367,8 @@ void ui_draw(const ui_view_t* view) {
     {rssi, theme.text_secondary}, {snr, theme.text_secondary},
     {status, failed ? theme.status_danger : stable && signal.valid ? theme.status_positive : theme.text_muted},
     {!stable ? "AFC --" : signal.afc_rail ? "AFC!" : "AFC OK", stable && signal.afc_rail ? theme.status_danger : theme.text_secondary},
-    {"RDS", rdsVisible && view->rds_synchronized ? theme.active : theme.text_muted},
+    {"RDS", !rdsVisible || !view->rds_synchronized ? theme.text_muted :
+            view->rds_receiving ? theme.status_positive : theme.active},
   };
   const int readingCount = band->fm ? 5 : 4;
   int textWidth = 0;

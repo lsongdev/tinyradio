@@ -116,6 +116,8 @@ RF gain index and stereo pilot detection remain available through serial diagnos
 
 ## RDS station names and text
 
+The FM-only `RDS` label is gray before synchronization and lights in the theme's active color once synchronized. Receiving a usable data group briefly changes it to the positive-status color; sustained reception pulses at most 2.5 times per second. This indicates incoming data, not completed text: PS/RT still require two matching complete messages before display.
+
 **PS (Programme Service)** is the station name, such as `LOVE959`. **RT (RadioText)** is extra broadcast text, such as programme details, a song title, an advertisement, or a contact number.
 
 With only PS or RT available, the main area uses large text, approximately 42 pixels high. When both are available, it shows PS above RT in two approximately 21-pixel rows. Long strings scroll independently, pausing at their beginning and end. The display grows the remaining text again when the other message is absent, reusing the same space.

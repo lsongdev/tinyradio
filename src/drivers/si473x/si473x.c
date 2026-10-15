@@ -316,6 +316,11 @@ bool si473x_read_rds(si473x_t* chip) {
   for (uint8_t i = 0; i < count; ++i) {
     if (!command(chip, pop, sizeof pop, response, sizeof response)) return false;
     ++chip->rds_status.groups;
+    // BLE=3 in any block means this is not a fully usable group. Counting
+    // correctable groups separately avoids flashing for corrupt FIFO entries.
+    const uint8_t errors = response[12];
+    if ((errors >> 6) < 3 && ((errors >> 4) & 3) < 3 && ((errors >> 2) & 3) < 3 && (errors & 3) < 3)
+      ++chip->rds_status.usable_groups;
     rds_decoder_accept(&chip->rds, (uint16_t)(response[4] << 8 | response[5]), (uint16_t)(response[6] << 8 | response[7]),
                        (uint16_t)(response[10] << 8 | response[11]), response[12], (uint16_t)(response[8] << 8 | response[9]));
   }

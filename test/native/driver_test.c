@@ -109,8 +109,19 @@ int main(void) {
   assert(has(bus, 6, 0x12,0,0x11,2,0,4)); assert(has(bus, 3, 0x28,1,26));
   assert(has(bus, 6, 0x12,0,0x13,2,0,31));
   name(bus, "RADIO FM"); assert(si473x_read_rds(chip) && !bus->fifo_count && !strcmp(rds_ps(rds), "RADIO FM"));
-  assert(chip->rds_status.groups == 8 && chip->rds_status.synchronized);
+  assert(chip->rds_status.groups == 8 && chip->rds_status.usable_groups == 8 && chip->rds_status.synchronized);
   assert(si473x_read_rds(chip) && !strcmp(rds_ps(rds), "RADIO FM")); // Empty FIFO must not inject a phantom group.
+  assert(chip->rds_status.groups == 8 && chip->rds_status.usable_groups == 8);
+  // Uncorrectable errors in any block must not drive reception activity.
+  // Unsupported group types still count when their data is correctable.
+  for (int block = 0; block < 4; ++block) {
+    group(bus, 0xf000, 0, 0);
+    bus->fifo[(bus->fifo_head + bus->fifo_count - 1) % MAX_GROUPS][12] = (uint8_t)(3 << (block * 2));
+  }
+  group(bus, 0xf000, 0, 0);
+  bus->fifo[(bus->fifo_head + bus->fifo_count - 1) % MAX_GROUPS][12] = 0xaa; // BLE=2 in every block is usable.
+  assert(si473x_read_rds(chip));
+  assert(chip->rds_status.groups == 13 && chip->rds_status.usable_groups == 9);
   bus->synced = false; assert(si473x_read_rds(chip) && !strcmp(rds_ps(rds), "RADIO FM"));
   assert(!chip->rds_status.synchronized); bus->synced = true;
   name(bus, "RADIO FM"); assert(si473x_read_rds(chip) && si473x_read_rds(chip));
@@ -126,6 +137,7 @@ int main(void) {
   assert(si473x_read_rds(chip) && !strcmp(rds_enhanced_text(rds), "中文"));
   name(bus, "OLD NAME"); assert(si473x_tune(chip, 100100000) && !rds_ps(rds)[0] && !bus->fifo_count); assert(settle(chip));
   assert(rds_enhanced_group(rds) == -1 && !rds_enhanced_text(rds)[0] && !rds_clock_time(rds)->valid);
+  assert(!chip->rds_status.usable_groups && !chip->rds_status.groups);
   rds_clock_sync_update(&sync, rds_clock_time(rds), &clock, 601000);
   assert(device_clock_read(&clock, 601000).valid && device_clock_read(&clock, 601000).utc_seconds == first_time + 600);
   enhanced(bus); assert(si473x_read_rds(chip));
@@ -133,6 +145,7 @@ int main(void) {
   group(bus, 0x4001, 0xdf1e, 0xcad0); assert(si473x_read_rds(chip) && rds_clock_time(rds)->valid);
   assert(si473x_seek(chip, true, 64000000, 108000000, 100000) && !rds_ps(rds)[0]);
   assert(!rds_enhanced_text(rds)[0] && rds_enhanced_group(rds) == -1 && !rds_clock_time(rds)->valid);
+  assert(!chip->rds_status.usable_groups && !chip->rds_status.groups);
   assert(si473x_cancel_seek(chip));
   rds_clock_sync_update(&sync, rds_clock_time(rds), &clock, 602000);
   assert(device_clock_read(&clock, 602000).valid && device_clock_read(&clock, 602000).utc_seconds == first_time + 601);

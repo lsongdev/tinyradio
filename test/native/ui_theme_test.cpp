@@ -160,15 +160,20 @@ int main() {
     assert(radio_model_set_band(&model, 3));
     view.failed = view.pending = false;
     view.signal.quality_known = true;
-    view.rds_synchronized = true;
+    view.rds_synchronized = true; view.rds_receiving = false;
     view.ps = "";
     draws.clear(); ui_draw(&view);
     assert(signalText("RDS") && signalText("RDS")->color == theme.active);
     assert(signalText("SNR255dB") && !signalText("RF255") && !signalText("P1"));
+    view.rds_receiving = true;
+    draws.clear(); ui_draw(&view);
+    assert(signalText("RDS")->color == theme.status_positive);
+    checkSignalRow(PANEL, true); // Pulse changes color only, preserving spacing.
+    view.rds_receiving = false;
     view.signal.quality_known = false;
     draws.clear(); ui_draw(&view);
     assert(signalText("RDS")->color == theme.active && signalText("SNR--dB"));
-    view.ps = "OLD NAME"; view.rds_synchronized = false;
+    view.ps = "OLD NAME"; view.rds_synchronized = false; view.rds_receiving = true;
     draws.clear(); ui_draw(&view);
     assert(signalText("RDS")->color == theme.text_muted);
     view.rds_synchronized = true; view.pending = true;
