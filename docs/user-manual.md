@@ -47,7 +47,7 @@ Replace `PORT` with the receiver's USB serial port. Close other serial monitors 
 | --- | --- | --- |
 | LW | 153–279 kHz | AM, LSB, USB |
 | MW | 520–1710 kHz | AM, LSB, USB |
-| SW | 2.3–26.1 MHz | AM, LSB, USB |
+| SW | 1.711–30 MHz (beyond the chip's 2.3–26.1 MHz specification at both ends) | AM, LSB, USB |
 | VHF | 64–108 MHz | FM |
 | AIR | 118–137 MHz, GeekNest V5A only; grayed out elsewhere | AM (no seek) |
 

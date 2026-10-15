@@ -24,13 +24,13 @@ int main(void) {
     assert(model.band == (size_t)(band == 0 ? 0 : band - 1));
     assert(radio_model_frequency(&model) == (band == 0 ? band_of(&model)->min_hz : band_of(&model)->max_hz)); valid(&model);
   }
-  radio_model_set_band(&model, 2); radio_model_set_mode(&model, SI473X_USB); radio_model_set_frequency(&model, 26100000);
+  radio_model_set_band(&model, 2); radio_model_set_mode(&model, SI473X_USB); radio_model_set_frequency(&model, 30000000);
   radio_model_turn_frequency(&model, 3);
   assert(model.band == 3 && radio_model_mode(&model) == SI473X_FM && radio_model_step(&model) == 100000);
   assert(radio_model_frequency(&model) == 64200000);
   radio_model_set_frequency(&model, 64000000); radio_model_turn_frequency(&model, -3);
   assert(model.band == 2 && radio_model_mode(&model) == SI473X_USB && radio_model_step(&model) == 100);
-  assert(radio_model_frequency(&model) == 26099800);
+  assert(radio_model_frequency(&model) == 29999800);
   // Batched counts must match detent-by-detent traversal, including memories.
   const int counts[] = {25000, -25000, 250000, -250000};
   for (int c = 0; c < 4; ++c) {
