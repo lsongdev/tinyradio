@@ -24,7 +24,14 @@ static int volume = 18, applied_volume = -1;
 static int brightness = 128;
 static si473x_reception_t reception[4] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
 static bool reception_dirty = true;
+static bool band_locked = false; // Session only; not saved.
 static hal_settings_storage_t storage;
+static const char SETTINGS_KEY[] = "settings";
+// UTC offset in minutes, 2 bytes little-endian; only kept on boards with an RTC.
+static const char OFFSET_KEY[] = "utcoffset";
+static int16_t stored_offset = 0;
+static hal_environment_reading_t environment;
+static bool environment_known = false;
 static uint8_t observed_settings[RADIO_SETTINGS_SIZE], stored_settings[RADIO_SETTINGS_SIZE];
 static bool storage_ready = false, settings_stored = false, save_pending = false;
 static uint32_t last_settings_change = 0, last_save_attempt = 0, settings_writes = 0;
@@ -54,7 +61,7 @@ static void load_settings(void) {
   storage_ready = hal_settings_begin(&storage, BOARD_STORAGE_NAMESPACE);
   uint8_t bytes[RADIO_SETTINGS_SIZE];
   radio_settings_t saved;
-  if (storage_ready && hal_settings_load(&storage, bytes, sizeof bytes) && radio_settings_decode(bytes, &saved)) {
+  if (storage_ready && hal_settings_load(&storage, SETTINGS_KEY, bytes, sizeof bytes) && radio_settings_decode(bytes, &saved)) {
     radio_model_restore(&model, &saved.tuning); volume = saved.volume; brightness = saved.brightness; muted = saved.muted;
     memcpy(reception, saved.reception, sizeof reception);
     settings_stored = true;
@@ -72,7 +79,7 @@ static void remember_settings(uint32_t now) {
   if (!save_pending || now - last_settings_change < 2000 || chip.tuning || chip.seeking ||
       pending_seek || (reconfigure && !failed) || (last_save_attempt && now - last_save_attempt < 10000)) return;
   last_save_attempt = now;
-  if (hal_settings_save(&storage, observed_settings, sizeof observed_settings)) {
+  if (hal_settings_save(&storage, SETTINGS_KEY, observed_settings, sizeof observed_settings)) {
     memcpy(stored_settings, observed_settings, sizeof stored_settings); settings_stored = true; save_pending = false;
     last_save_attempt = 0; ++settings_writes; serial_println("Settings: saved");
   } else serial_println("Settings: save failed; retry in 10s");
@@ -83,7 +90,7 @@ static bool flush_settings(void) {
   if (!storage_ready) return true; // Nothing can be saved; do not trap the user.
   if (!encode_current(bytes)) return false;
   if (settings_stored && !memcmp(bytes, stored_settings, sizeof bytes)) return true;
-  if (!hal_settings_save(&storage, bytes, sizeof bytes)) return false;
+  if (!hal_settings_save(&storage, SETTINGS_KEY, bytes, sizeof bytes)) return false;
   memcpy(stored_settings, bytes, sizeof bytes); memcpy(observed_settings, bytes, sizeof bytes);
   settings_stored = true; save_pending = false; ++settings_writes;
   return true;
@@ -103,22 +110,28 @@ static void report(void) {
   char clock_text[6]; format_clock(clock_text, hal_monotonic_ms());
   const rds_clock_time_t* ct = rds_clock_time(&chip.rds);
   const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
-  serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu supply=%.3f adc=%lu error=%s\n",
+  serial_printf("RADIO band=%s mode=%s requested=%lu confirmed=%lu step=%lu volume=%d brightness=%d mute=%d stored=%d save=%d writes=%lu tuning=%d RSSI=%u SNR=%u valid=%d blend=%u pilot=%d agc=%d gain=%u sm=%d afc=%d bw=%lu focus=%u seek=%d searching=%d result=%u bwsel=%u gainset=%d smset=%u ps=[%s] rt=[%s] ert=[%s] ertgroup=%d ertflags=%u clock=[%s] ctmjd=%lu ctutc=%u ctoffset=%d clocksource=%s clockutc=%lld clockoffset=%d rdssync=%d rdsfifo=%u rdsgroups=%lu rdsoverruns=%lu supply=%.3f adc=%lu locked=%d env=%d temp=%ld rh=%lu error=%s\n",
     radio_model_band(&model)->name, si473x_mode_name(radio_model_mode(&model)), (unsigned long)radio_model_frequency(&model),
     (unsigned long)chip.confirmed_hz, (unsigned long)radio_model_step(&model), volume, brightness, muted, settings_stored, save_pending, (unsigned long)settings_writes,
-    chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, si473x_error_text(&chip));
+    chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, si473x_error_text(&chip));
 }
 static void draw(void) {
-  char clock_text[6];
+  char clock_text[6], date_text[24];
   const bool clock_valid = format_clock(clock_text, hal_monotonic_ms());
+  const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
+  if (time.valid)
+    snprintf(date_text, sizeof date_text, "%04d-%02u-%02u %02u:%02u:%02u", (int)(time.year % 10000), time.month % 13u,
+             time.day % 32u, time.hour % 24u, time.minute % 60u, time.second % 60u);
   ui_view_t view;
   memset(&view, 0, sizeof view);
   view.model = &model; view.field = field;
   view.volume = volume; view.brightness = brightness; view.muted = muted;
   view.supply = supply; view.clock = clock_valid ? clock_text : NULL;
+  view.date_time = time.valid ? date_text : NULL;
+  view.environment = environment; view.environment_known = environment_known;
   view.signal = chip.signal; view.reception = *settings();
   view.ps = rds_ps(&chip.rds); view.message = radio_message(); view.error = si473x_error_text(&chip);
-  view.failed = failed; view.seeking = chip.seeking; view.seek_mode = seek_mode;
+  view.failed = failed; view.seeking = chip.seeking; view.seek_mode = seek_mode; view.band_locked = band_locked;
   view.pending = reconfigure || chip.tuning || chip.seeking || chip.confirmed_hz != radio_model_frequency(&model);
   view.seek_arrow = seek_mode && (chip.seeking || pending_seek) ? (pending_seek ? pending_seek : seek_direction) : 0;
   view.audio_status_known = chip.signal.quality_known && !reconfigure && !chip.tuning && !chip.seeking;
@@ -142,7 +155,8 @@ static void retry(void) {
 }
 static void tune_by(int delta) {
   const size_t before = model.band;
-  radio_model_turn_frequency(&model, delta);
+  if (band_locked) radio_model_turn_frequency_in_band(&model, delta);
+  else radio_model_turn_frequency(&model, delta);
   if (before != model.band) changed_configuration();
   dirty = true;
 }
@@ -173,6 +187,7 @@ static void long_press(void) {
     if (seek_mode) stop_seek(true);
     else if (!failed && !si473x_is_ssb(radio_model_mode(&model))) { seek_mode = true; dirty = true; }
   } else if (field == UI_FIELD_VOLUME) toggle_mute();
+  else if (field == UI_FIELD_BAND) { band_locked = !band_locked; dirty = true; }
 }
 static void short_press(void) {
   if (failed) retry();
@@ -228,6 +243,36 @@ static void serial_input(void) {
   }
 }
 static void log_line(const char* line) { serial_println(line); }
+// RTC boards keep UTC in the RTC and the RDS offset in NVS, so local time
+// survives power off. RDS CT corrects both.
+static void restore_clock(void) {
+  uint8_t bytes[2];
+  int64_t utc;
+  if (storage_ready && hal_settings_load(&storage, OFFSET_KEY, bytes, sizeof bytes)) {
+    const int16_t offset = (int16_t)(bytes[0] | bytes[1] << 8);
+    if (offset >= -16 * 60 && offset <= 16 * 60 && offset % 30 == 0) stored_offset = offset;
+  }
+  device_clock_set_utc_offset(&device_clock, stored_offset);
+  if (board_rtc_read(&utc)) device_clock_synchronize(&device_clock, utc, TIME_SOURCE_RTC, hal_monotonic_ms());
+}
+static void store_clock(void) {
+  const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
+  if (!time.valid) return;
+  if (!board_rtc_write(time.utc_seconds)) serial_println("Clock: RTC write failed");
+  if (time.utc_offset_minutes != stored_offset) {
+    const uint8_t bytes[] = {(uint8_t)time.utc_offset_minutes, (uint8_t)((uint16_t)time.utc_offset_minutes >> 8)};
+    if (hal_settings_save(&storage, OFFSET_KEY, bytes, sizeof bytes)) stored_offset = time.utc_offset_minutes;
+  }
+}
+// Current side-key binding: A acts as an encoder short press; B and C step the
+// volume up and down, repeating while held.
+static void key_input(uint32_t now) {
+  uint8_t repeats;
+  const uint8_t pressed = board_keys_read(now, &repeats);
+  const uint8_t volume_keys = (pressed | repeats) & (BOARD_KEY_B | BOARD_KEY_C);
+  if (pressed & BOARD_KEY_A) short_press();
+  if (volume_keys) { volume = clamp(volume + (volume_keys & BOARD_KEY_B ? 2 : -2), 0, 63); dirty = true; }
+}
 #if BOARD_CAN_POWER_OFF
 static void power_off(void) {
   if (!flush_settings()) { serial_println("Power off cancelled: settings not saved"); dirty = true; return; }
@@ -269,6 +314,7 @@ void receiver_begin(void) {
   serial_begin(115200); board_begin();
   radio_model_init(&model);
   load_settings();
+  if (BOARD_HAS_RTC) restore_clock();
   lcd = board_display_begin();
   if (lcd) { board_display_set_brightness(brightness); buffered = ui_begin(); }
   supply = board_battery_read();
@@ -287,6 +333,7 @@ void receiver_begin(void) {
 void receiver_update(void) {
   const uint32_t now = millis();
   button_input(now);
+  key_input(now);
   const int delta = board_encoder_read(); if (delta) turn(delta);
   serial_input();
   if (!failed && reconfigure && now - edited_at >= 180) {
@@ -339,7 +386,9 @@ void receiver_update(void) {
   }
   if (now - last_battery >= 1000) { last_battery = now; supply = board_battery_read(); dirty = true; }
   if (radio_message()[0] && now - last_draw >= 50) dirty = true;
-  rds_clock_sync_update(&rds_clock_sync, rds_clock_time(&chip.rds), &device_clock, hal_monotonic_ms());
+  if (rds_clock_sync_update(&rds_clock_sync, rds_clock_time(&chip.rds), &device_clock, hal_monotonic_ms()) && BOARD_HAS_RTC)
+    store_clock();
+  if (board_environment_poll(now, &environment)) { environment_known = true; dirty = true; }
   remember_settings(now);
   if (dirty && now - last_draw >= 50) { dirty = false; last_draw = now; if (lcd) draw(); }
   if (screenshot_requested && (last_draw || !lcd || !buffered)) {

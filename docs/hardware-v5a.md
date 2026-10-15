@@ -41,7 +41,7 @@ The firmware mapping is [`src/boards/v5a/pins.h`](../src/boards/v5a/pins.h).
 | Display SCLK / MOSI / CS / DC | 18 / 19 / 22 / 23 | Write-only, no reset line, VSPI |
 | Backlight | 21 | PWM, active high |
 | I2C SDA / SCL | 13 / 15 | Shared by all I2C devices, always powered |
-| SELECT / volume up / volume down | 35 / 32 / 12 | Active low; GPIO12 is also a strapping pin |
+| Side keys A / B / C | 35 / 32 / 12 | Active low; A has a board pull-up; GPIO12 is also a strapping pin. Labelled select / volume up / volume down in the vendor firmware |
 | Encoder A / B / push | 38 / 37 / 36 | Push also switches the power circuit on and is the EXT0 wake input |
 | Battery | 39 | 100 kΩ / 100 kΩ divider |
 | Analog audio input | 34 | Left audio channel to ADC1 (used by the previous firmware's FFT) |

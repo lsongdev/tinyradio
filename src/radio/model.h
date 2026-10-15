@@ -43,6 +43,8 @@ bool radio_model_set_mode(radio_model_t* model, si473x_mode_t mode);
 bool radio_model_set_frequency(radio_model_t* model, uint32_t hz);
 // Crosses into adjacent bands at their endpoints; stops at the global endpoints.
 bool radio_model_turn_frequency(radio_model_t* model, int turns);
+// Like turn_frequency, but stops at the current band's edges.
+bool radio_model_turn_frequency_in_band(radio_model_t* model, int turns);
 void radio_model_turn_band(radio_model_t* model, int turns);
 void radio_model_turn_mode(radio_model_t* model, int turns);
 void radio_model_turn_step(radio_model_t* model, int turns);

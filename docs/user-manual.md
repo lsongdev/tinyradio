@@ -63,9 +63,10 @@ Manual tuning crosses from one band to the next at its endpoint. It stops at the
 | Rotate in seek mode | Search up/down within the current band |
 | Short-press in seek mode | Cancel search at the current frequency, return to manual tuning, and keep Frequency focused |
 | Long-press Volume | Toggle mute while retaining the chosen volume |
+| Long-press Band | Lock or unlock the current band: manual tuning stops at its edges instead of crossing |
 | Short-press on receiver error | Reset the radio chip and retry |
 
-A long press lasts approximately 650 ms. Releasing it does not generate a second short press. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow. Station text remains visible in idle seek mode; an active search temporarily shows frequency instead.
+A long press lasts approximately 650 ms. Releasing it does not generate a second short press. A locked band's name turns orange; the lock follows band changes and is cleared at power-on. A key held while the radio starts must be released before it acts. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow. Station text remains visible in idle seek mode; an active search temporarily shows frequency instead.
 
 ## Reading the screen
 

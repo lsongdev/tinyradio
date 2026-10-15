@@ -64,6 +64,15 @@ int main(void) {
   assert(!si473x_encode_frequency(SI473X_FM, 118000000, &word));
   assert(!si473x_encode_frequency(SI473X_AM, 7100100, &word));
   assert(!si473x_encode_frequency(SI473X_USB, 30000001, &word));
+  // Band lock: in-band turning stops at both edges and never changes band.
+  radio_model_set_band(&model, 1); radio_model_set_frequency(&model, 1700000);
+  radio_model_turn_frequency_in_band(&model, 5);
+  assert(model.band == 1 && radio_model_frequency(&model) == 1710000);
+  radio_model_turn_frequency_in_band(&model, INT_MAX);
+  assert(model.band == 1 && radio_model_frequency(&model) == 1710000);
+  radio_model_turn_frequency_in_band(&model, INT_MIN); valid(&model);
+  assert(model.band == 1 && radio_model_frequency(&model) == 520000);
+  radio_model_turn_frequency_in_band(&model, 3); assert(radio_model_frequency(&model) == 520000 + 3 * radio_model_step(&model));
   puts("Radio model: adjacent-band boundaries, mode/step restoration, batched counts, limits and BFO passed");
   return 0;
 }

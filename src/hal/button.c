@@ -5,11 +5,22 @@ void hal_button_begin(hal_button_t* button, int pin, bool pull_up) {
   pinMode(pin, pull_up ? INPUT_PULLUP : INPUT);
   button->raw = button->pressed = digitalRead(pin) == LOW;
   button->changed = millis();
+  button->repeating = false;
 }
 bool hal_button_update(hal_button_t* button, uint32_t now) {
   const bool pressed = digitalRead(button->pin) == LOW;
   if (pressed != button->raw) { button->raw = pressed; button->changed = now; }
   if (now - button->changed < 25 || button->pressed == button->raw) return false;
   button->pressed = button->raw;
+  button->repeating = false;
   return button->pressed;
+}
+bool hal_button_repeat(hal_button_t* button, uint32_t now, uint32_t delay, uint32_t interval) {
+  if (!button->pressed) return false;
+  if (!button->repeating) {
+    if (now - button->changed < delay) return false;
+    button->repeating = true;
+  } else if ((int32_t)(now - button->next_repeat) < 0) return false;
+  button->next_repeat = now + interval;
+  return true;
 }
