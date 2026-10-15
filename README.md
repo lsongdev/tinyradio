@@ -28,7 +28,7 @@ Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stati
 | Board | MCU | Build | Status |
 | --- | --- | --- | --- |
 | Sunnygold SI4732 Mini (ATS Mini) | ESP32-S3 | `ats-mini` | Supported; release builds and the [hardware facts](docs/hardware.md) cover this board |
-| GeekNest V5A | ESP32 | `v5a` | Experimental: display, encoder, FM reception, saved settings, and power on/off verified; AIR, the extra keys, and the full 240-row layout are not yet supported |
+| GeekNest V5A | ESP32 | `v5a` | Experimental: display, encoder, FM reception, saved settings, and power on/off verified; AIR, the extra keys, and the full 240-row layout are not yet supported. See [V5A hardware facts](docs/hardware-v5a.md) |
 
 Both boards share one UI, receiver logic, and SI4732 driver. Board-specific code lives in `src/boards/<name>/`; see [Development](docs/development.md#adding-a-board).
 
@@ -46,6 +46,7 @@ After switching on, rotate to tune and short-press to select a control. Long-pre
 | [Design](docs/design.md) | Architecture, tuning and seek, UI, RDS/eRT, and saved settings |
 | [Development](docs/development.md) | Building, flashing, boards, diagnostics, tests, tools, releases, and third-party notices |
 | [Hardware facts](docs/hardware.md) | ATS Mini schematics, GPIOs, power, reference assets, and verified observations |
+| [V5A hardware facts](docs/hardware-v5a.md) | GeekNest V5A resources, GPIOs, expander bits, clocks, power latch, and PSRAM constraints |
 
 ## License and credits
 
