@@ -17,11 +17,12 @@ Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stati
 
 ## Features
 
-- Continuous tuning across bands, with selectable modes and steps.
+- Continuous tuning across LW, MW, SW (1.711–30 MHz) and VHF/FM, with selectable modes and steps, and a per-band lock.
 - Seek by rotating the encoder; short-press to return to manual tuning.
-- Adjustable bandwidth, gain, soft mute, volume, and brightness.
+- Adjustable bandwidth, gain, soft mute, volume, and brightness; dark and light themes.
 - RDS station names, scrolling radio text, and broadcast clock, including UTF-8 eRT support.
-- Saved tuning and reception settings, plus full-screen screenshot export.
+- Battery percentage or voltage, saved tuning and reception settings, and full-screen screenshot export.
+- On the GeekNest V5A: AIR 118–137 MHz, side keys, audio spectrum, temperature/humidity, RTC, and software power off.
 
 ## Supported hardware
 
