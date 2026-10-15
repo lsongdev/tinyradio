@@ -45,19 +45,23 @@ Reuse `src/hal/` pieces where the hardware matches. Keep board-only parts (I/O e
 
 ## Build and flash
 
-Run commands from the repository root. Python 3.11 and PlatformIO 6.1.18 match CI:
+Run commands from the repository root. Python 3.11 and PlatformIO 6.1.18 match CI. The [`Makefile`](../Makefile) holds the build steps CI uses:
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install platformio==6.1.18
-pio run -e ats-mini
+make                                         # build every board
+make test                                    # host tests
 pio device list
-pio run -e ats-mini -t upload --upload-port /dev/ttyACM0
-pio device monitor --port /dev/ttyACM0 --baud 115200
+make flash BOARD=ats-mini PORT=/dev/ttyACM0  # build and flash one board
+make monitor BOARD=ats-mini PORT=/dev/ttyACM0
+make package PYTHON=python                   # build and package every board into dist/
 ```
 
-The GeekNest V5A port is in bring-up and builds with `-e v5a` (classic ESP32, USB-UART bridge, upload at 115200). It latches power, switches the amplifier through the XL9555, starts the SI4732's 32.768 kHz reference on Si5351 CLK1 (`BOARD_RADIO_EXTERNAL_CLOCK`; the driver then powers up without XOSCEN and sets REFCLK), and draws the shared receiver UI in the top 320 × 170 of the 320 × 240 panel. The 70 rows below are a separately buffered board-extras area with the date, time, and SHT30 temperature/humidity; two buffers keep the whole panel flicker-free without PSRAM, which stays off. Side keys report only positions A/B/C (`board_keys_read()`); the receiver binds A to a short press and B/C to volume. The PCF8523 keeps UTC (`BOARD_HAS_RTC`): it seeds the device clock at boot, RDS CT writes it back, and the UTC offset is stored under the NVS key `utcoffset`. AIR is not wired yet. Board facts and constraints are in [V5A hardware facts](hardware-v5a.md).
+`BOARD` is `ats-mini` or `v5a` and has no default, so one board's image is never flashed to the other. `PORT` is optional when only one radio is connected. `BOARDS` limits `make`/`make package` to some boards. `PYTHON` must be able to import PlatformIO (the venv above, or `~/.platformio/penv/bin/python` with the installer's PlatformIO).
+
+The GeekNest V5A port is in bring-up and builds as `v5a` (classic ESP32, USB-UART bridge, upload at 115200). It latches power, switches the amplifier through the XL9555, starts the SI4732's 32.768 kHz reference on Si5351 CLK1 (`BOARD_RADIO_EXTERNAL_CLOCK`; the driver then powers up without XOSCEN and sets REFCLK), and draws the shared receiver UI in the top 320 × 170 of the 320 × 240 panel. The 70 rows below are a separately buffered board-extras area with the date, time, and SHT30 temperature/humidity; two buffers keep the whole panel flicker-free without PSRAM, which stays off. Side keys report only positions A/B/C (`board_keys_read()`); the receiver binds A to a short press and B/C to volume. The PCF8523 keeps UTC (`BOARD_HAS_RTC`): it seeds the device clock at boot, RDS CT writes it back, and the UTC offset is stored under the NVS key `utcoffset`. AIR is not wired yet. Board facts and constraints are in [V5A hardware facts](hardware-v5a.md).
 
 Replace `/dev/ttyACM0` with the receiver's port: macOS commonly uses `/dev/cu.usbmodem…`, and Windows uses `COM…`. Close other serial consumers before uploading. Normal PlatformIO uploads preserve compatible NVS settings. Prebuilt installation choices are in the [user manual](user-manual.md#installing-or-updating-firmware).
 
@@ -134,23 +138,24 @@ The 1.71/1.702 factors found in some other firmware convert raw ADC codes; apply
 
 ## Continuous integration and daily releases
 
-[`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) coordinates build and publication for the `master` branch. Pushes, pull requests, and manual dispatch run `tools/test.sh`, build with pinned PlatformIO 6.1.18, and package firmware. Actions are pinned to verified commit hashes; PlatformIO platforms/packages are cached against `platformio.ini`.
+[`.github/workflows/firmware.yml`](../.github/workflows/firmware.yml) coordinates build and publication for the `master` branch. Pushes, pull requests, and manual dispatch run `make test`, `make build` and `make package` with pinned PlatformIO 6.1.18, producing firmware for every board. Actions are pinned to verified commit hashes; PlatformIO platforms/packages are cached against `platformio.ini`.
 
 There is no scheduled cron trigger: publication happens after a successful build, not automatically on a day with no build. Successful `master` builds update one prerelease per Shanghai calendar day, tagged `daily-YYYY-MM-DD`. PR builds produce downloadable artifacts only. Publication is serialized and checks that its commit is still the head of `master`, preventing a superseded build from replacing a newer one.
 
-`tools/package_firmware.py` obtains installed dependency paths from PlatformIO, including version-suffixed package directories. It exports:
+`tools/package_firmware.py` obtains installed dependency paths from PlatformIO, including version-suffixed package directories. Its `BOARDS` table holds each board's file prefix (`ats-mini`, `geeknest-v5a`), chip, flash size and frequency, bootloader offset, and flashing notes. For each board it exports:
 
 - The application image for updates at `0x10000`.
-- A filled 16 MiB image for complete installation at `0x0`, which resets NVS/data.
-- An install ZIP with bootloader (`0x0`), partitions (`0x8000`), boot-app marker (`0xe000`), application (`0x10000`), instructions, source snapshot, the four guides and reference assets, and notices.
+- A filled full-size image (16 MiB ATS Mini, 4 MiB V5A) for complete installation at `0x0`, which resets NVS/data.
+- An install ZIP with bootloader (`0x0` on the ESP32-S3, `0x1000` on the ESP32), partitions (`0x8000`), boot-app marker (`0xe000`), application (`0x10000`), instructions, source snapshot, the guides and reference assets, and notices.
 - Build metadata and SHA-256 checksums.
 
-The ESP32-S3 ROM image uses DIO/80 MHz upload parameters, matching PlatformIO's Arduino handling of the QIO board configuration. The application configures the board's QIO flash mode. Multi-file or application-only updates preserve compatible NVS; the filled full image overwrites it.
+ROM images use DIO upload parameters (80 MHz ATS Mini, 40 MHz V5A), matching PlatformIO's Arduino handling; the ATS Mini application then configures its QIO flash mode. Multi-file or application-only updates preserve compatible NVS; the filled full image overwrites it.
 
 Packaging requires a clean checkout so the archived commit corresponds to the release source. Local validation may use `--allow-dirty`; its metadata marks that result as dirty and its source archive still represents HEAD. Run the tool with the Python environment where PlatformIO is installed:
 
 ```sh
-python tools/package_firmware.py --output dist
+make package PYTHON=python                    # or: python tools/package_firmware.py --output dist
+make package PYTHON=python ALLOW_DIRTY=1      # local check of uncommitted work
 ```
 
 ## Third-party notices

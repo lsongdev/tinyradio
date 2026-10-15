@@ -37,6 +37,8 @@ python -m pip install esptool==4.9.0
 python -m esptool --chip esp32s3 --port PORT --baud 460800 write_flash 0x10000 ats-mini-firmware.bin
 ```
 
+GeekNest V5A files use the prefix `geeknest-v5a-` instead, with a 4 MiB full image, `--chip esp32` and `--baud 115200`; its `FLASHING.txt` has the exact commands. Back up the V5A's original flash before the first installation.
+
 Replace `PORT` with the receiver's USB serial port. Close other serial monitors first. The command above updates only the application. Use the complete-installation or multi-file commands in `FLASHING.txt` for those installation types, and use files from the same package.
 
 ## Bands and modes
