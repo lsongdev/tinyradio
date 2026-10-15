@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "boards/keys.h"
 #include "hal/battery.h"
@@ -11,6 +12,7 @@
 #define BOARD_SCREEN_HEIGHT 170
 #define BOARD_HAS_RTC 0 // No calendar chip: time is lost at power off.
 #define BOARD_HAS_AIR 0 // No frequency converter.
+#define BOARD_AUDIO_RATE 0 // No audio sampling: board_audio_read() is always false.
 #define BOARD_RADIO_EXTERNAL_CLOCK 0 // SI4732 has its own 32.768 kHz crystal.
 #define BOARD_CAN_POWER_OFF 0        // Hardware power switch; no board_power_off().
 
@@ -39,6 +41,7 @@ uint8_t board_keys_read(uint32_t now, uint8_t* repeats); // No extra keys: alway
 bool board_rtc_read(int64_t* utc_seconds);
 bool board_rtc_write(int64_t utc_seconds);
 bool board_environment_poll(uint32_t now, hal_environment_reading_t* reading);
+bool board_audio_read(uint16_t* samples, size_t count);
 
 // VCC_RADIO switch, SI4732 reset line, and the I2C bus powered by that rail.
 bool board_radio_begin(void); // False when the radio's support hardware failed.

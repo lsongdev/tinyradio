@@ -23,6 +23,7 @@ typedef struct {
   const char* date_time;        // Local "YYYY-MM-DD HH:MM:SS", or NULL.
   hal_environment_reading_t environment;
   bool environment_known;       // The board has produced at least one reading.
+  const uint8_t* spectrum;      // SPECTRUM_BARS audio levels (0..255, 0-8 kHz), or NULL without audio sampling.
   si473x_signal_t signal;
   si473x_reception_t reception; // Settings of the current mode.
   const char* ps;               // Confirmed PS, or "".
@@ -38,10 +39,12 @@ typedef struct {
   bool audio_status_known;      // Stereo/mono is meaningful.
 } ui_view_t;
 // The shared layout fills the top 320 x 170. Taller panels get a board-extras
-// area below it (date, time, environment).
+// area below it (audio spectrum, date, time, environment).
 // Call after board_display_begin(). Returns false when the frame buffer is
 // unavailable; drawing then goes directly to the panel and capture is disabled.
 bool ui_begin(void);
 void ui_draw(const ui_view_t* view);
+// Redraws only the extras area (nothing on panels without one), e.g. for a new spectrum.
+void ui_draw_extras(const ui_view_t* view);
 // Writes the last presented frame to serial as RGB888, not a new rendering.
 void ui_capture(void);

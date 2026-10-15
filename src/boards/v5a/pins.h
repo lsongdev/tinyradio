@@ -8,7 +8,8 @@ enum {
   PIN_KEY_A = 35, PIN_KEY_B = 32, // Side keys, active low.
   PIN_KEY_C = 12,               // Pulled-up key; also the VDD_SDIO strapping pin.
   PIN_ENCODER_A = 38, PIN_ENCODER_B = 37, PIN_ENCODER_BUTTON = 36,
-  PIN_BATTERY = 39,
+  PIN_BATTERY = 39,             // ADC1 channel 3.
+  PIN_AUDIO = 34,               // ADC1 channel 6: SI4732 left audio output.
   PIN_I2C_SDA = 13, PIN_I2C_SCL = 15,
 };
 #define BATTERY_DIVIDER 2.0f      // R21 = R22 = 100k; BAT_ADC = BAT_IN / 2.

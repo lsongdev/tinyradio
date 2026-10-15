@@ -44,7 +44,7 @@ The firmware mapping is [`src/boards/v5a/pins.h`](../src/boards/v5a/pins.h).
 | Side keys A / B / C | 35 / 32 / 12 | Active low; A has a board pull-up; GPIO12 is also a strapping pin. Labelled select / volume up / volume down in the vendor firmware |
 | Encoder A / B / push | 38 / 37 / 36 | Push also switches the power circuit on and is the EXT0 wake input |
 | Battery | 39 | 100 kΩ / 100 kΩ divider |
-| Analog audio input | 34 | Left audio channel to ADC1 (used by the previous firmware's FFT) |
+| Analog audio input | 34 | Left audio channel to ADC1 channel 6, sampled by I2S0 DMA for the spectrum; shares ADC1 with the battery |
 | Digital audio BCLK / DATA / LRCK | 25 / 26 / 27 | Reserved; never produced sound in tests |
 
 GPIO34–39 have no internal pull-ups; the board supplies them for the encoder, encoder push and SELECT.

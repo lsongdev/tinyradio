@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "drivers/i2c_bus.h"
 #include "boards/keys.h"
@@ -11,6 +12,7 @@
 #define BOARD_SCREEN_HEIGHT 240
 #define BOARD_HAS_RTC 1 // PCF8523 keeps UTC across power off.
 #define BOARD_HAS_AIR 1 // 118-137 MHz through the Si5351 LO and SA602 mixer.
+#define BOARD_AUDIO_RATE 16000 // Analog audio sampled for the spectrum display.
 #define BOARD_RADIO_EXTERNAL_CLOCK 1 // SI4732 RCLK comes from Si5351 CLK1.
 #define BOARD_CAN_POWER_OFF 1        // Software power latch; see board_power_off().
 
@@ -46,6 +48,9 @@ bool board_rtc_write(int64_t utc_seconds);
 // SHT30, measured every five seconds without blocking. Returns true when
 // *reading changed: a new measurement, or a failed one (valid = false).
 bool board_environment_poll(uint32_t now, hal_environment_reading_t* reading);
+// Demodulated audio (left channel, GPIO34) at BOARD_AUDIO_RATE, 12-bit unsigned.
+// Nonblocking: true when a whole block of `count` samples (at most 256) was read.
+bool board_audio_read(uint16_t* samples, size_t count);
 
 // The SI4732 shares the always-powered I2C bus; reset goes through the XL9555.
 // begin() starts its 32.768 kHz reference on Si5351 CLK1; reset() retries that if it failed.

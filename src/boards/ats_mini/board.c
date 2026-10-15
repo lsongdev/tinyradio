@@ -45,6 +45,7 @@ uint8_t board_keys_read(uint32_t now, uint8_t* repeats) { (void)now; *repeats = 
 bool board_rtc_read(int64_t* utc_seconds) { (void)utc_seconds; return false; }
 bool board_rtc_write(int64_t utc_seconds) { (void)utc_seconds; return false; }
 bool board_environment_poll(uint32_t now, hal_environment_reading_t* reading) { (void)now; (void)reading; return false; }
+bool board_audio_read(uint16_t* samples, size_t count) { (void)samples; (void)count; return false; }
 
 bool board_radio_begin(void) {
   digitalWrite(PIN_RADIO_ENABLE, LOW);
