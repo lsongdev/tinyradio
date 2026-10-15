@@ -132,6 +132,7 @@ Once set, the clock keeps running when you tune, change band/mode, search, lose 
 | Volume | Audio level, 0–100% |
 | Brightness | Display backlight level |
 | Battery | Rotate to switch between the percentage estimate and the supply voltage (session only) |
+| Audio spectrum (V5A, bottom of the screen) | Relative level of the demodulated audio, 0–8 kHz in 32 bars; not a radio-frequency spectrum and not calibrated |
 
 SM is soft mute, not a squelch threshold. BW, AGC, and SM are remembered separately for each demodulation mode.
 

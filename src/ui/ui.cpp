@@ -7,12 +7,15 @@ extern "C" {
 #include "boards/board.h"
 #include "hal/serial.h"
 #include "radio/frequency.h"
+#include "services/spectrum.h"
 }
 namespace {
 struct ScrollState { char text[129]; int width; uint32_t started; };
 lgfx::LGFX_Sprite frame(&board_display_device()), extras(&board_display_device());
 bool buffered = false, extras_buffered = false;
 char extras_shown[64];
+uint8_t spectrum_shown[SPECTRUM_BARS];
+bool spectrum_drawn = false;
 ScrollState scroll[2];
 
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
@@ -119,7 +122,22 @@ static_assert(frameWidth <= BOARD_SCREEN_WIDTH && frameHeight <= BOARD_SCREEN_HE
 
 constexpr int extrasHeight = BOARD_SCREEN_HEIGHT - frameHeight;
 
-// Board-only information below the shared layout. Redrawn only when its text changes.
+// Audio spectrum in the extras area: 32 bars over 0-8 kHz, styled after the V5A's original firmware.
+void drawSpectrum(lgfx::LGFXBase& g, int top, const uint8_t* bars) {
+  constexpr int left = 12, right = 310, floor = 44;
+  g.drawFastHLine(8, top + floor + 1, 304, TFT_DARKGREY);
+  for (int i = 0; i < SPECTRUM_BARS; ++i) {
+    const int x = left + i * (right - left) / SPECTRUM_BARS, next = left + (i + 1) * (right - left) / SPECTRUM_BARS;
+    const int h = bars[i] * 40 / 255;
+    if (h) g.fillRect(x, top + floor - h, next - x - 1, h, TFT_CYAN);
+  }
+  g.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  g.setTextDatum(lgfx::textdatum_t::top_left); g.drawString("0", left, top + floor + 4);
+  g.setTextDatum(lgfx::textdatum_t::top_center); g.drawString("4k", (left + right) / 2, top + floor + 4);
+  g.setTextDatum(lgfx::textdatum_t::top_right); g.drawString("8kHz", right, top + floor + 4);
+}
+
+// Board-only information below the shared layout. Redrawn only when it changes.
 void drawExtras(const ui_view_t* view) {
   char environment[32], line[64];
   if (!view->environment_known) environment[0] = 0;
@@ -131,18 +149,27 @@ void drawExtras(const ui_view_t* view) {
              labs(tenths) % 10, (unsigned long)(humidity / 10), (unsigned long)(humidity % 10));
   }
   snprintf(line, sizeof line, "%s|%s", view->date_time ? view->date_time : "", environment);
-  if (!strcmp(line, extras_shown)) return;
+  const bool spectrum_changed = view->spectrum &&
+      (!spectrum_drawn || memcmp(view->spectrum, spectrum_shown, sizeof spectrum_shown));
+  if (!strcmp(line, extras_shown) && !spectrum_changed) return;
   snprintf(extras_shown, sizeof extras_shown, "%s", line);
+  if (view->spectrum) { memcpy(spectrum_shown, view->spectrum, sizeof spectrum_shown); spectrum_drawn = true; }
   lgfx::LGFXBase& g = extras_buffered ? static_cast<lgfx::LGFXBase&>(extras) : static_cast<lgfx::LGFXBase&>(board_display_device());
   const int top = extras_buffered ? 0 : frameHeight, baseline = top + extrasHeight - 12;
   g.fillRect(0, top, frameWidth, extrasHeight, TFT_BLACK);
-  g.setFont(&fonts::Font0); g.setTextSize(1); g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  g.setFont(&fonts::Font0); g.setTextSize(1);
+  if (view->spectrum) drawSpectrum(g, top, view->spectrum);
+  g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   g.setTextDatum(lgfx::textdatum_t::top_left);
   if (view->date_time) g.drawString(view->date_time, 8, baseline);
   g.setTextDatum(lgfx::textdatum_t::top_right);
   g.drawString(environment, frameWidth - 8, baseline);
   g.setTextDatum(lgfx::textdatum_t::top_left);
   if (extras_buffered) extras.pushSprite(0, frameHeight);
+}
+
+void ui_draw_extras(const ui_view_t* view) {
+  if (extrasHeight >= 16) drawExtras(view);
 }
 
 bool ui_begin(void) {
@@ -161,7 +188,7 @@ void ui_draw(const ui_view_t* view) {
   const uint32_t step = radio_model_step(&model);
   lgfx::LGFXBase& g = buffered ? static_cast<lgfx::LGFXBase&>(frame) : static_cast<lgfx::LGFXBase&>(board_display_device());
   g.fillScreen(TFT_BLACK); g.setFont(&fonts::Font0); g.setTextSize(1);
-  if (!buffered) extras_shown[0] = 0; // Direct drawing just cleared the extras area too.
+  if (!buffered) { extras_shown[0] = 0; spectrum_drawn = false; } // Direct drawing cleared the extras too.
   // All bands remain visible in the left half of the single-line status bar.
   for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) {
     const int x = 3 + i * 28;
@@ -316,11 +343,14 @@ void ui_draw(const ui_view_t* view) {
 }
 void ui_capture(void) {
   if (!buffered) { serial_println("SCREENSHOT_ERROR framebuffer unavailable"); return; }
-  constexpr int width = frameWidth, height = frameHeight;
+  // The shared frame, followed by the extras area when it has its own buffer.
+  constexpr int width = frameWidth;
+  const int height = frameHeight + (extras_buffered ? extrasHeight : 0);
   serial_printf("\nATS_SCREENSHOT RGB888 %d %d %d\n", width, height, width * height * 3);
   lgfx::bgr888_t pixels[width]; uint8_t row[width * 3];
   for (int y = 0; y < height; ++y) {
-    frame.readRectRGB(0, y, width, 1, pixels);
+    if (y < frameHeight) frame.readRectRGB(0, y, width, 1, pixels);
+    else extras.readRectRGB(0, y - frameHeight, width, 1, pixels);
     for (int x = 0; x < width; ++x) {
       row[x * 3] = pixels[x].r; row[x * 3 + 1] = pixels[x].g; row[x * 3 + 2] = pixels[x].b;
     }

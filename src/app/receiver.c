@@ -8,6 +8,7 @@
 #include "radio/model.h"
 #include "radio/saved_settings.h"
 #include "services/device_clock.h"
+#include "services/spectrum.h"
 #include "ui/ui.h"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
@@ -35,6 +36,9 @@ static const char OFFSET_KEY[] = "utcoffset";
 static int16_t stored_offset = 0;
 static hal_environment_reading_t environment;
 static bool environment_known = false;
+static uint8_t spectrum[SPECTRUM_BARS];
+static bool spectrum_known = false;
+static uint32_t last_spectrum = 0;
 static uint8_t observed_settings[RADIO_SETTINGS_SIZE], stored_settings[RADIO_SETTINGS_SIZE];
 static bool storage_ready = false, settings_stored = false, save_pending = false;
 static uint32_t last_settings_change = 0, last_save_attempt = 0, settings_writes = 0;
@@ -131,7 +135,8 @@ static void report(void) {
     (unsigned long)confirmed_rf(), (unsigned long)radio_model_step(&model), volume, brightness, muted, settings_stored, save_pending, (unsigned long)settings_writes,
     chip.tuning, s->rssi, s->snr, s->valid, s->blend, s->pilot, s->agc_enabled, s->gain_index, s->soft_muted, s->afc_rail, (unsigned long)chip.bandwidth_hz, (unsigned)field, seek_mode, chip.seeking, (unsigned)chip.seek_result, r->bandwidth, r->gain, r->soft_mute_db, rds_ps(&chip.rds), rds_radio_text(&chip.rds), rds_enhanced_text(&chip.rds), rds_enhanced_group(&chip.rds), rds_enhanced_flags(&chip.rds), clock_text, (unsigned long)ct->mjd, ct->utc_minutes, ct->offset_minutes, time_source_name(time.source), (long long)time.utc_seconds, time.utc_offset_minutes, chip.rds_status.synchronized, chip.rds_status.queued, (unsigned long)chip.rds_status.groups, (unsigned long)chip.rds_status.overruns, supply.volts, (unsigned long)supply.adc_millivolts, band_locked, environment.valid, (long)environment.milli_celsius, (unsigned long)environment.milli_percent, frontend_failed ? "RF front end failed" : si473x_error_text(&chip));
 }
-static void draw(void) {
+// extras_only redraws just the board extras area (spectrum updates).
+static void draw(bool extras_only) {
   char clock_text[6], date_text[24];
   const bool clock_valid = format_clock(clock_text, hal_monotonic_ms());
   const device_time_t time = device_clock_read(&device_clock, hal_monotonic_ms());
@@ -145,6 +150,7 @@ static void draw(void) {
   view.supply = supply; view.battery_volts = battery_volts; view.clock = clock_valid ? clock_text : NULL;
   view.date_time = time.valid ? date_text : NULL;
   view.environment = environment; view.environment_known = environment_known;
+  view.spectrum = spectrum_known ? spectrum : NULL;
   view.signal = chip.signal; view.reception = *settings();
   view.ps = rds_ps(&chip.rds); view.message = radio_message(); view.error = frontend_failed ? "RF front end failed" : si473x_error_text(&chip);
   view.failed = failed; view.seeking = chip.seeking; view.seek_mode = seek_mode; view.band_locked = band_locked;
@@ -152,7 +158,7 @@ static void draw(void) {
   view.seek_arrow = seek_mode && (chip.seeking || pending_seek) ? (pending_seek ? pending_seek : seek_direction) : 0;
   view.audio_status_known = chip.signal.quality_known && !reconfigure && !chip.tuning && !chip.seeking;
   view.notice = power_pending ? "Release to power off" : NULL;
-  ui_draw(&view);
+  if (extras_only) ui_draw_extras(&view); else ui_draw(&view);
 }
 static void fail(void) {
   failed = true; seek_mode = false; pending_seek = seek_direction = 0; audio_ready = false;
@@ -415,7 +421,14 @@ void receiver_update(void) {
     store_clock();
   if (board_environment_poll(now, &environment)) { environment_known = true; dirty = true; }
   remember_settings(now);
-  if (dirty && now - last_draw >= 50) { dirty = false; last_draw = now; if (lcd) draw(); }
+  if (BOARD_AUDIO_RATE && now - last_spectrum >= 66) {
+    uint16_t samples[SPECTRUM_SAMPLES];
+    if (board_audio_read(samples, SPECTRUM_SAMPLES)) {
+      spectrum_bars(samples, spectrum); spectrum_known = true; last_spectrum = now;
+      if (lcd && !dirty) draw(true);
+    }
+  }
+  if (dirty && now - last_draw >= 50) { dirty = false; last_draw = now; if (lcd) draw(false); }
   if (screenshot_requested && (last_draw || !lcd || !buffered)) {
     screenshot_requested = false;
     if (!lcd) serial_println("SCREENSHOT_ERROR framebuffer unavailable");

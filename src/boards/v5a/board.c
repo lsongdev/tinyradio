@@ -9,6 +9,8 @@
 #include "hal/i2c.h"
 #include "services/calendar.h"
 #include <Arduino.h>
+#include <driver/adc.h>
+#include <driver/i2s.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #include <soc/rtc_cntl_reg.h>
@@ -28,6 +30,8 @@ enum { AIR_IF_HZ = 10700000 };
 enum route { ROUTE_UNKNOWN, ROUTE_DIRECT, ROUTE_LNA, ROUTE_AIR };
 static enum route route = ROUTE_UNKNOWN;
 static uint32_t lo_hz = 0;
+enum { AUDIO_BLOCK = 256 };
+static bool audio_sampling = false, audio_discard = true;
 static uint32_t measurement_started = 0;
 
 static void take_power_latch(void) {
@@ -41,6 +45,43 @@ static void take_power_latch(void) {
   pinMode(PIN_POWER_HOLD, OUTPUT);
   rtc_gpio_deinit(PIN_ENCODER_BUTTON);
 }
+// I2S0 clocks ADC1 by DMA in its built-in ADC mode; no I2S pins are used.
+// The battery is on ADC1 too, so board_battery_read() pauses sampling.
+static void audio_begin(void) {
+  const i2s_config_t config = {
+    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_ADC_BUILT_IN),
+    .sample_rate = BOARD_AUDIO_RATE,
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+    .communication_format = I2S_COMM_FORMAT_STAND_MSB,
+    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+    .dma_buf_count = 4,
+    .dma_buf_len = AUDIO_BLOCK,
+  };
+  if (i2s_driver_install(I2S_NUM_0, &config, 0, NULL) != ESP_OK) return;
+  if (adc1_config_width(ADC_WIDTH_BIT_12) != ESP_OK || adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_12) != ESP_OK ||
+      i2s_set_adc_mode(ADC_UNIT_1, ADC1_CHANNEL_6) != ESP_OK || i2s_adc_enable(I2S_NUM_0) != ESP_OK) {
+    i2s_driver_uninstall(I2S_NUM_0);
+    return;
+  }
+  audio_sampling = true; audio_discard = true;
+}
+static void audio_pause(void) { if (audio_sampling) i2s_adc_disable(I2S_NUM_0); }
+static void audio_resume(void) {
+  if (!audio_sampling) return;
+  i2s_set_adc_mode(ADC_UNIT_1, ADC1_CHANNEL_6);
+  i2s_adc_enable(I2S_NUM_0);
+  audio_discard = true; // The first block after resuming mixes channels.
+}
+bool board_audio_read(uint16_t* samples, size_t count) {
+  size_t bytes = 0;
+  if (!audio_sampling || count > AUDIO_BLOCK ||
+      i2s_read(I2S_NUM_0, samples, count * sizeof *samples, &bytes, 0) != ESP_OK || bytes != count * sizeof *samples)
+    return false;
+  if (audio_discard) { audio_discard = false; return false; }
+  for (size_t i = 0; i < count; ++i) samples[i] &= 0x0FFF; // Upper bits carry the channel number.
+  return true;
+}
 void board_begin(void) {
   take_power_latch();
   hal_i2c_begin(&i2c, PIN_I2C_SDA, PIN_I2C_SCL, 100000);
@@ -51,6 +92,7 @@ void board_begin(void) {
   pinMode(PIN_BATTERY, INPUT);
   analogReadResolution(12);
   analogSetPinAttenuation(PIN_BATTERY, ADC_11db);
+  audio_begin();
   hal_encoder_begin(&encoder, PIN_ENCODER_A, PIN_ENCODER_B, false);
   hal_button_begin(&button, PIN_ENCODER_BUTTON, false);
   for (int i = 0; i < 3; ++i) hal_button_begin(&keys[i], key_pins[i].pin, key_pins[i].pull_up);
@@ -65,7 +107,9 @@ void board_speaker_set_enabled(bool enabled) {
 
 hal_battery_reading_t board_battery_read(void) {
   uint32_t sum = 0;
+  audio_pause();
   for (int i = 0; i < 32; ++i) sum += analogReadMilliVolts(PIN_BATTERY);
+  audio_resume();
   const uint32_t mv = (sum + 16) / 32;
   const float volts = mv * BATTERY_DIVIDER * BATTERY_CALIBRATION / 1000.0f;
   int percent = (int)((volts - 3.2f) * 100.0f);
@@ -169,6 +213,7 @@ void board_power_off(void) {
   delay(5);
   si5351_disable_outputs(&clock_generator);
   frontend_off();
+  audio_pause();
   board_display_sleep();
   esp_sleep_enable_ext0_wakeup(PIN_ENCODER_BUTTON, 0);
   digitalWrite(PIN_POWER_HOLD, LOW);
