@@ -22,4 +22,8 @@ enum {
   EXPANDER_RADIO_RESET = 0x01,  // Port 0 bit 0: SI4732 RST, active low.
   EXPANDER_AMP_SHUTDOWN = 0x20, // Port 1 bit 5: amplifier SHUTDOWN, active high.
   EXPANDER_ANALOG_AUDIO = 0x40, // Port 1 bit 6: route SI4732 analog audio to the amplifier.
+  EXPANDER_RF_MIXER = 0x20,     // Port 0 bit 5: RF switch to the mixer loop (AIR).
+  EXPANDER_RF_LNA = 0x40,       // Port 0 bit 6: RF switch to the LNA antenna route.
+  EXPANDER_MIXER_POWER = 0x04,  // Port 1 bit 2: SA602 supply.
+  EXPANDER_LNA_POWER = 0x10,    // Port 1 bit 4: LNA supply.
 };

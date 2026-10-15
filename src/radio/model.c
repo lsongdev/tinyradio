@@ -1,22 +1,27 @@
 #include "model.h"
 #include <string.h>
 
-const radio_band_t radio_bands[RADIO_BAND_COUNT] = {
-  {"LW", 153000, 279000, 198000, false, true},
-  {"MW", 520000, 1710000, 999000, false, true},
-  {"SW", 2300000, 26100000, 7100000, false, true},
-  {"VHF", 64000000, 108000000, 100000000, true, true},
-  {"AIR", 118000000, 137000000, 118000000, false, false},
+radio_band_t radio_bands[RADIO_BAND_COUNT] = {
+  {"LW", 153000, 279000, 198000, false, true, false, true},
+  {"MW", 520000, 1710000, 999000, false, true, false, true},
+  {"SW", 2300000, 26100000, 7100000, false, true, false, true},
+  {"VHF", 64000000, 108000000, 100000000, true, false, false, true},
+  {"AIR", 118000000, 137000000, 118000000, false, false, true, false},
 };
+void radio_set_band_available(size_t index, bool available) {
+  if (index < RADIO_BAND_COUNT) radio_bands[index].available = available;
+}
 static const uint32_t fm_steps[] = {10000, 50000, 100000, 200000};
 static const uint32_t am_steps[] = {1000, 5000, 9000, 10000};
 static const uint32_t ssb_steps[] = {10, 50, 100, 500, 1000};
 static const uint32_t sw_am_steps[] = {1000, 5000, 9000, 10000, 100000};
 static const uint32_t sw_ssb_steps[] = {10, 50, 100, 500, 1000, 10000, 100000};
+static const uint32_t air_steps[] = {1000, 5000, 25000}; // AM channels are 25 kHz; 8.33 kHz is not supported.
 static int wrap(int value, int size) { return (value % size + size) % size; }
 static int64_t magnitude(int turns) { return turns < 0 ? -(int64_t)turns : turns; }
 
 uint32_t radio_step_option(size_t band, si473x_mode_t mode, int index) {
+  if (band == RADIO_BAND_AIR) return index >= 0 && index < 3 ? air_steps[index] : 0;
   if (mode == SI473X_FM) return index >= 0 && index < 4 ? fm_steps[index] : 0;
   if (band == 2 && si473x_is_ssb(mode)) return index >= 0 && index < 7 ? sw_ssb_steps[index] : 0;
   if (band == 2) return index >= 0 && index < 5 ? sw_am_steps[index] : 0;
@@ -24,6 +29,7 @@ uint32_t radio_step_option(size_t band, si473x_mode_t mode, int index) {
   return index >= 0 && index < 4 ? am_steps[index] : 0;
 }
 uint8_t radio_step_option_count(size_t band, si473x_mode_t mode) {
+  if (band == RADIO_BAND_AIR) return 3;
   if (mode == SI473X_FM) return 4;
   if (band == 2 && si473x_is_ssb(mode)) return 7;
   if (band == 2) return 5;
@@ -43,7 +49,7 @@ void radio_model_init(radio_model_t* model) {
   for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) {
     model->memories[i].hz = radio_bands[i].initial_hz;
     model->memories[i].mode = radio_bands[i].fm ? SI473X_FM : SI473X_AM;
-    model->memories[i].step = radio_bands[i].fm || i == 1 ? 2 : 0;
+    model->memories[i].step = radio_bands[i].fm || i == 1 || i == RADIO_BAND_AIR ? 2 : 0;
   }
 }
 radio_state_t radio_model_state(const radio_model_t* model) {
@@ -94,7 +100,9 @@ bool radio_model_set_mode(radio_model_t* model, si473x_mode_t mode) {
 bool radio_model_set_frequency(radio_model_t* model, uint32_t hz) {
   const radio_band_t* band = radio_model_band(model);
   si473x_tune_word_t word;
-  if (hz < band->min_hz || hz > band->max_hz || !si473x_encode_frequency(radio_model_mode(model), hz, &word)) return false;
+  if (hz < band->min_hz || hz > band->max_hz) return false;
+  // Converted bands reach the chip at a fixed IF; keep their RF on the AM kHz grid.
+  if (band->converted ? hz % 1000 != 0 : !si473x_encode_frequency(radio_model_mode(model), hz, &word)) return false;
   model->memories[model->band].hz = hz;
   return true;
 }
@@ -130,7 +138,9 @@ bool radio_model_turn_frequency_in_band(radio_model_t* model, int turns) {
   return radio_model_set_frequency(model, direction > 0 ? band->max_hz : band->min_hz);
 }
 void radio_model_turn_band(radio_model_t* model, int turns) {
-  turns %= 4; // Four available bands; avoid unbounded work for accumulated input.
+  int available = 0;
+  for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) available += radio_bands[i].available;
+  turns %= available; // Avoid unbounded work for accumulated input.
   int index = (int)model->band;
   const int direction = turns < 0 ? -1 : 1;
   for (int64_t i = 0; i < magnitude(turns); ++i) {
@@ -140,7 +150,9 @@ void radio_model_turn_band(radio_model_t* model, int turns) {
 }
 void radio_model_turn_mode(radio_model_t* model, int turns) {
   const radio_band_t* band = radio_model_band(model);
-  turns %= band->fm ? 1 : 3;
+  int allowed = 0;
+  for (int i = SI473X_FM; i <= SI473X_USB; ++i) allowed += radio_mode_allowed(band, (si473x_mode_t)i);
+  turns %= allowed;
   int mode = (int)radio_model_mode(model);
   const int direction = turns < 0 ? -1 : 1;
   for (int64_t i = 0; i < magnitude(turns); ++i) {

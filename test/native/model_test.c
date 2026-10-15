@@ -73,6 +73,32 @@ int main(void) {
   radio_model_turn_frequency_in_band(&model, INT_MIN); valid(&model);
   assert(model.band == 1 && radio_model_frequency(&model) == 520000);
   radio_model_turn_frequency_in_band(&model, 3); assert(radio_model_frequency(&model) == 520000 + 3 * radio_model_step(&model));
+  // AIR through a board converter: AM only, 1/5/25 kHz steps, joined to VHF.
+  radio_set_band_available(RADIO_BAND_AIR, true);
+  radio_model_init(&model);
+  assert(radio_model_set_band(&model, RADIO_BAND_AIR) && radio_model_mode(&model) == SI473X_AM);
+  assert(radio_model_frequency(&model) == 118000000 && radio_model_step(&model) == 25000);
+  assert(!radio_model_set_mode(&model, SI473X_FM) && !radio_model_set_mode(&model, SI473X_USB));
+  radio_model_turn_mode(&model, 7); assert(radio_model_mode(&model) == SI473X_AM);
+  assert(radio_model_set_frequency(&model, 125025000) && !radio_model_set_frequency(&model, 125025500));
+  radio_model_turn_step(&model, 1); assert(radio_model_step(&model) == 1000);
+  radio_model_turn_step(&model, 1); assert(radio_model_step(&model) == 5000);
+  radio_model_set_band(&model, 3); radio_model_set_frequency(&model, 108000000);
+  radio_model_turn_frequency(&model, 1); valid(&model);
+  assert(model.band == RADIO_BAND_AIR && radio_model_frequency(&model) == 118000000);
+  radio_model_turn_frequency(&model, -1);
+  assert(model.band == 3 && radio_model_frequency(&model) == 108000000 && radio_model_mode(&model) == SI473X_FM);
+  radio_model_set_band(&model, RADIO_BAND_AIR); radio_model_turn_frequency(&model, INT_MAX); valid(&model);
+  assert(model.band == RADIO_BAND_AIR && radio_model_frequency(&model) == 137000000);
+  radio_model_turn_band(&model, 1); assert(model.band == 0);
+  radio_model_turn_band(&model, -1); assert(model.band == RADIO_BAND_AIR);
+  // A record saved before AIR existed (1 kHz step) still restores.
+  radio_state_t state = radio_model_state(&model);
+  state.memories[RADIO_BAND_AIR].step_hz = 1000;
+  radio_model_t restored; radio_model_init(&restored);
+  assert(radio_model_restore(&restored, &state));
+  radio_set_band_available(RADIO_BAND_AIR, false);
+  assert(!radio_model_set_band(&model, RADIO_BAND_AIR));
   puts("Radio model: adjacent-band boundaries, mode/step restoration, batched counts, limits and BFO passed");
   return 0;
 }

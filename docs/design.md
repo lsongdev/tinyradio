@@ -30,7 +30,9 @@ The SI473x driver receives an `si473x_bus_t` (write/read callbacks plus context)
 
 ## Frequency model
 
-The application uses the broadcast ranges documented in the [SI4732-A10 data short](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/data-shorts/Si4732-A10-short.pdf): LW 153–279 kHz, MW 520–1710 kHz, SW 2.3–26.1 MHz, and VHF/FM 64–108 MHz. AM/LSB/USB are available on LW/MW/SW; FM is available on VHF. AIR 118–137 MHz is a disabled reference entry, skipped during selection and tuning. Loading an SSB patch does not extend the VHF front end into AIR.
+The application uses the broadcast ranges documented in the [SI4732-A10 data short](https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/data-shorts/Si4732-A10-short.pdf): LW 153–279 kHz, MW 520–1710 kHz, SW 2.3–26.1 MHz, and VHF/FM 64–108 MHz. AM/LSB/USB are available on LW/MW/SW; FM is available on VHF. AIR 118–137 MHz is a converted band (`radio_band_t.converted`): boards without a frequency converter leave it disabled, so it is skipped during selection and tuning; the V5A enables it (`BOARD_HAS_AIR`). AIR is AM only, with 1/5/25 kHz steps and frequencies on the 1 kHz grid; 8.33 kHz channels are not supported. Loading an SSB patch does not extend the SI4732's VHF front end into AIR.
+
+Before each tune the receiver calls `board_frontend_set(rf)` and tunes the chip to `board_frontend_receiver_hz(rf)`. Direct boards return the RF itself. On the V5A, LW/MW use the direct antenna path, SW/VHF the LNA, and AIR the LNA and SA602 mixer with the Si5351 CLK0 local oscillator at RF − 10.7 MHz while the SI4732 stays at 10.7 MHz in AM; changing AIR frequency only retunes the LO. A tune counts as complete when the front end is set for the RF and the chip has confirmed its frequency. The chip's seek cannot follow a converter, so seek is unavailable on AIR, as in SSB.
 
 Public frequency APIs use Hz. FM commands encode 10 kHz units; AM/SSB commands encode kHz carriers. The AM/SSB encoder can express 150 kHz–30 MHz, but the application deliberately uses the data-short ranges. Encodable frequencies are not a guarantee of RF performance outside those ranges.
 
