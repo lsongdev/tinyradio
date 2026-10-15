@@ -57,7 +57,7 @@ pio run -e ats-mini -t upload --upload-port /dev/ttyACM0
 pio device monitor --port /dev/ttyACM0 --baud 115200
 ```
 
-The GeekNest V5A port is in bring-up and builds with `-e v5a` (classic ESP32, USB-UART bridge, upload at 115200). It latches power, switches the amplifier through the XL9555, starts the SI4732's 32.768 kHz reference on Si5351 CLK1 (`BOARD_RADIO_EXTERNAL_CLOCK`; the driver then powers up without XOSCEN and sets REFCLK), and draws the receiver UI in the top 320 × 170 of the 320 × 240 panel. PSRAM is not started, AIR is not wired, and the extra keys are unused.
+The GeekNest V5A port is in bring-up and builds with `-e v5a` (classic ESP32, USB-UART bridge, upload at 115200). It latches power, switches the amplifier through the XL9555, starts the SI4732's 32.768 kHz reference on Si5351 CLK1 (`BOARD_RADIO_EXTERNAL_CLOCK`; the driver then powers up without XOSCEN and sets REFCLK), and draws the receiver UI in the top 320 × 170 of the 320 × 240 panel. PSRAM is not started, AIR is not wired, and the extra keys are unused. Board facts and constraints are in [V5A hardware facts](hardware-v5a.md).
 
 Replace `/dev/ttyACM0` with the receiver's port: macOS commonly uses `/dev/cu.usbmodem…`, and Windows uses `COM…`. Close other serial consumers before uploading. Normal PlatformIO uploads preserve compatible NVS settings. Prebuilt installation choices are in the [user manual](user-manual.md#installing-or-updating-firmware).
 
