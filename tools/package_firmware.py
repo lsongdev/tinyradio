@@ -21,6 +21,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MIB = 1024 * 1024
+ASSETS = ("firmware.bin", "full.bin", "install.zip", "build-info.json", "sha256sums.txt")
 # Per-board flash layout. Offsets follow PlatformIO's upload layout for each
 # chip; Arduino QIO builds use a DIO ROM-loader header and switch after boot.
 BOARDS = {
@@ -65,6 +66,10 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     for environment in args.environment or list(BOARDS):
         package(parser, environment, BOARDS[environment], output, dirty)
+        # Releases publish whatever lands in the output; fail rather than ship a misnamed set.
+        missing = [name for suffix in ASSETS if not (output / (name := f"{BOARDS[environment]['prefix']}-{suffix}")).is_file()]
+        if missing:
+            sys.exit(f"packaging {environment} did not produce: {', '.join(missing)}")
 
 
 def package(parser, environment, board, output, dirty):
@@ -153,12 +158,12 @@ font/dependency terms. The SSB patch is separate from the project's MIT license.
                 if path.is_file():
                     archive.write(path, str(path.relative_to(ROOT)))
             archive.write(ROOT / "src/drivers/si473x/patches/ssb.h", "licenses/ssb_patch.h")
-            for tree, prefix in [(ROOT / "docs/licenses", "project-dependencies"),
+            for tree, folder in [(ROOT / "docs/licenses", "project-dependencies"),
                                  (framework, "arduino-esp32"),
                                  (ROOT / ".pio/libdeps" / environment, "libraries")]:
                 for path in sorted(tree.rglob("*")):
-                    if path.is_file() and (prefix == "project-dependencies" or path.name.lower().startswith(("license", "copying", "notice", "copyright"))):
-                        archive.write(path, f"licenses/{prefix}/{path.relative_to(tree)}")
+                    if path.is_file() and (folder == "project-dependencies" or path.name.lower().startswith(("license", "copying", "notice", "copyright"))):
+                        archive.write(path, f"licenses/{folder}/{path.relative_to(tree)}")
             # Display-library notices can also occur in source headers.
             libraries = ROOT / ".pio/libdeps" / environment
             for path in sorted(libraries.rglob("*")):

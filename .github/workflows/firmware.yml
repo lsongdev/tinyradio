@@ -105,6 +105,10 @@ jobs:
             --jq ".[] | select(.tag_name == \"$tag\") | .id")
           if [[ -n "$release_id" ]]; then
             gh release upload "$tag" dist/* --clobber
+            # Drop assets this build did not produce, such as renamed or stale files.
+            gh release view "$tag" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+              [[ -f "dist/$asset" ]] || gh release delete-asset "$tag" "$asset" --yes
+            done
             gh release edit "$tag" --title "$title" --notes-file notes.md --prerelease
           else
             gh release create "$tag" dist/* --verify-tag --title "$title" \
