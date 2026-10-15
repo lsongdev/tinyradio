@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include "drivers/si473x/si473x.h"
 #include "hal/battery.h"
+#include "hal/environment.h"
 #include "radio/model.h"
 // Item with encoder focus, in short-press cycling order.
 typedef enum {
@@ -16,6 +17,9 @@ typedef struct {
   bool muted;
   hal_battery_reading_t supply;
   const char* clock;            // Local "HH:MM", or NULL before the first synchronization.
+  const char* date_time;        // Local "YYYY-MM-DD HH:MM:SS", or NULL.
+  hal_environment_reading_t environment;
+  bool environment_known;       // The board has produced at least one reading.
   si473x_signal_t signal;
   si473x_reception_t reception; // Settings of the current mode.
   const char* ps;               // Confirmed PS, or "".
@@ -26,9 +30,12 @@ typedef struct {
   bool pending;                 // Configuring, tuning, seeking, or not yet at the requested frequency.
   bool seeking;                 // The chip is searching.
   bool seek_mode;
+  bool band_locked;             // Manual tuning stays within the current band.
   int seek_arrow;               // Requested or active seek direction; 0 hides the arrow.
   bool audio_status_known;      // Stereo/mono is meaningful.
 } ui_view_t;
+// The shared layout fills the top 320 x 170. Taller panels get a board-extras
+// area below it (date, time, environment).
 // Call after board_display_begin(). Returns false when the frame buffer is
 // unavailable; drawing then goes directly to the panel and capture is disabled.
 bool ui_begin(void);

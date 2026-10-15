@@ -119,6 +119,16 @@ bool radio_model_turn_frequency(radio_model_t* model, int turns) {
   }
   return true;
 }
+bool radio_model_turn_frequency_in_band(radio_model_t* model, int turns) {
+  const int direction = turns < 0 ? -1 : 1;
+  const int64_t remaining = magnitude(turns);
+  const radio_band_t* band = radio_model_band(model);
+  const uint32_t step = radio_model_step(model), hz = radio_model_frequency(model);
+  const uint32_t distance = direction > 0 ? band->max_hz - hz : hz - band->min_hz;
+  if (remaining <= distance / step)
+    return radio_model_set_frequency(model, (uint32_t)((int64_t)hz + direction * remaining * step));
+  return radio_model_set_frequency(model, direction > 0 ? band->max_hz : band->min_hz);
+}
 void radio_model_turn_band(radio_model_t* model, int turns) {
   turns %= 4; // Four available bands; avoid unbounded work for accumulated input.
   int index = (int)model->band;

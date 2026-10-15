@@ -5,8 +5,8 @@ enum {
   PIN_POWER_HOLD = 4,          // Latches the battery supply; must go high first.
   PIN_TFT_SCLK = 18, PIN_TFT_MOSI = 19, PIN_TFT_CS = 22, PIN_TFT_DC = 23,
   PIN_BACKLIGHT = 21,
-  PIN_SELECT = 35, PIN_UP = 32,
-  PIN_DOWN = 12,               // Pulled-up key; also the VDD_SDIO strapping pin.
+  PIN_KEY_A = 35, PIN_KEY_B = 32, // Side keys, active low.
+  PIN_KEY_C = 12,               // Pulled-up key; also the VDD_SDIO strapping pin.
   PIN_ENCODER_A = 38, PIN_ENCODER_B = 37, PIN_ENCODER_BUTTON = 36,
   PIN_BATTERY = 39,
   PIN_I2C_SDA = 13, PIN_I2C_SCL = 15,
@@ -17,6 +17,7 @@ enum {
 // XL9555 and Si5351 (25 MHz crystal) on the shared I2C bus.
 #define EXPANDER_ADDRESS 0x20
 #define CLOCK_ADDRESS 0x60
+// The PCF8523 RTC (0x68) and SHT30 sensor (0x44) share the same bus.
 enum {
   EXPANDER_RADIO_RESET = 0x01,  // Port 0 bit 0: SI4732 RST, active low.
   EXPANDER_AMP_SHUTDOWN = 0x20, // Port 1 bit 5: amplifier SHUTDOWN, active high.

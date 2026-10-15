@@ -1,6 +1,7 @@
 // LovyanGFX is C++; this file is the UI's only C++ and exposes the C API in ui.h.
 #include "boards/display.hpp"
 #include <Arduino.h>
+#include <stdlib.h>
 extern "C" {
 #include "ui.h"
 #include "boards/board.h"
@@ -9,8 +10,9 @@ extern "C" {
 }
 namespace {
 struct ScrollState { char text[129]; int width; uint32_t started; };
-lgfx::LGFX_Sprite frame(&board_display_device());
-bool buffered = false;
+lgfx::LGFX_Sprite frame(&board_display_device()), extras(&board_display_device());
+bool buffered = false, extras_buffered = false;
+char extras_shown[64];
 ScrollState scroll[2];
 
 void drawSun(lgfx::LGFXBase& g, int x, uint16_t color) {
@@ -30,7 +32,7 @@ void drawSpeaker(lgfx::LGFXBase& g, int x, uint16_t color, bool muted, int volum
     for (int i = 0; i < waves; ++i) g.drawFastVLine(x + 10 + 2 * i, 9 - i, 3 + 2 * i, color);
   }
 }
-void drawRuler(lgfx::LGFXBase& g, const radio_model_t& model) {
+void drawRuler(lgfx::LGFXBase& g, const radio_model_t& model, bool locked) {
   struct Tick { uint32_t hz, step; size_t band; int x; bool valid; const char* name; bool endpoint; };
   Tick ticks[27]{};
   constexpr int center = 13, spacing = 12;
@@ -41,7 +43,8 @@ void drawRuler(lgfx::LGFXBase& g, const radio_model_t& model) {
     int index = center;
     while (index + direction >= 0 && index + direction < 27) {
       radio_model_t next = preview;
-      radio_model_turn_frequency(&next, direction);
+      if (locked) radio_model_turn_frequency_in_band(&next, direction);
+      else radio_model_turn_frequency(&next, direction);
       if (next.band == preview.band && radio_model_frequency(&next) == radio_model_frequency(&preview)) break;
       if (next.band != preview.band) {
         ticks[index].endpoint = true;
@@ -114,9 +117,41 @@ void drawRuler(lgfx::LGFXBase& g, const radio_model_t& model) {
 constexpr int frameWidth = 320, frameHeight = 170;
 static_assert(frameWidth <= BOARD_SCREEN_WIDTH && frameHeight <= BOARD_SCREEN_HEIGHT, "layout exceeds the panel");
 
+constexpr int extrasHeight = BOARD_SCREEN_HEIGHT - frameHeight;
+
+// Board-only information below the shared layout. Redrawn only when its text changes.
+void drawExtras(const ui_view_t* view) {
+  char environment[32], line[64];
+  if (!view->environment_known) environment[0] = 0;
+  else if (!view->environment.valid) snprintf(environment, sizeof environment, "--.-C --.-%%RH");
+  else {
+    const int32_t tenths = (view->environment.milli_celsius + (view->environment.milli_celsius < 0 ? -50 : 50)) / 100;
+    const uint32_t humidity = (view->environment.milli_percent + 50) / 100;
+    snprintf(environment, sizeof environment, "%s%ld.%ldC %lu.%lu%%RH", tenths < 0 ? "-" : "", labs(tenths) / 10,
+             labs(tenths) % 10, (unsigned long)(humidity / 10), (unsigned long)(humidity % 10));
+  }
+  snprintf(line, sizeof line, "%s|%s", view->date_time ? view->date_time : "", environment);
+  if (!strcmp(line, extras_shown)) return;
+  snprintf(extras_shown, sizeof extras_shown, "%s", line);
+  lgfx::LGFXBase& g = extras_buffered ? static_cast<lgfx::LGFXBase&>(extras) : static_cast<lgfx::LGFXBase&>(board_display_device());
+  const int top = extras_buffered ? 0 : frameHeight, baseline = top + extrasHeight - 12;
+  g.fillRect(0, top, frameWidth, extrasHeight, TFT_BLACK);
+  g.setFont(&fonts::Font0); g.setTextSize(1); g.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  g.setTextDatum(lgfx::textdatum_t::top_left);
+  if (view->date_time) g.drawString(view->date_time, 8, baseline);
+  g.setTextDatum(lgfx::textdatum_t::top_right);
+  g.drawString(environment, frameWidth - 8, baseline);
+  g.setTextDatum(lgfx::textdatum_t::top_left);
+  if (extras_buffered) extras.pushSprite(0, frameHeight);
+}
+
 bool ui_begin(void) {
   frame.setColorDepth(16);
   buffered = frame.createSprite(frameWidth, frameHeight) != nullptr;
+  if (extrasHeight >= 16) {
+    extras.setColorDepth(16);
+    extras_buffered = extras.createSprite(frameWidth, extrasHeight) != nullptr;
+  }
   return buffered;
 }
 void ui_draw(const ui_view_t* view) {
@@ -126,13 +161,15 @@ void ui_draw(const ui_view_t* view) {
   const uint32_t step = radio_model_step(&model);
   lgfx::LGFXBase& g = buffered ? static_cast<lgfx::LGFXBase&>(frame) : static_cast<lgfx::LGFXBase&>(board_display_device());
   g.fillScreen(TFT_BLACK); g.setFont(&fonts::Font0); g.setTextSize(1);
+  if (!buffered) extras_shown[0] = 0; // Direct drawing just cleared the extras area too.
   // All bands remain visible in the left half of the single-line status bar.
   for (size_t i = 0; i < RADIO_BAND_COUNT; ++i) {
     const int x = 3 + i * 28;
     const bool active = model.band == i;
     const uint16_t color = !radio_bands[i].available ? TFT_DARKGREY : active ? (view->field == UI_FIELD_BAND ? TFT_YELLOW : TFT_CYAN) : TFT_LIGHTGREY;
     g.drawRect(x, 2, 26, 17, color);
-    g.setTextDatum(lgfx::textdatum_t::middle_center); g.setTextColor(color, TFT_BLACK);
+    g.setTextDatum(lgfx::textdatum_t::middle_center);
+    g.setTextColor(active && view->band_locked ? TFT_ORANGE : color, TFT_BLACK);
     g.drawString(radio_bands[i].name, x + 13, 10);
   }
   g.setTextDatum(lgfx::textdatum_t::top_left);
@@ -271,8 +308,9 @@ void ui_draw(const ui_view_t* view) {
   }
   if (failed) { g.setTextColor(TFT_RED, TFT_BLACK); g.setCursor(8, 115); g.print(view->error); }
   else if (view->notice) { g.setTextColor(TFT_YELLOW, TFT_BLACK); g.setCursor(8, 115); g.print(view->notice); }
-  drawRuler(g, model);
+  drawRuler(g, model, view->band_locked);
   if (buffered) frame.pushSprite(0, 0);
+  if (extrasHeight >= 16) drawExtras(view);
 }
 void ui_capture(void) {
   if (!buffered) { serial_println("SCREENSHOT_ERROR framebuffer unavailable"); return; }

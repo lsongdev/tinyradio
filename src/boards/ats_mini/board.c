@@ -41,6 +41,10 @@ hal_battery_reading_t board_battery_read(void) {
 int board_encoder_read(void) { return hal_encoder_read(&encoder); }
 bool board_button_update(uint32_t now) { return hal_button_update(&button, now); }
 bool board_button_pressed(void) { return button.pressed; }
+uint8_t board_keys_read(uint32_t now, uint8_t* repeats) { (void)now; *repeats = 0; return 0; }
+bool board_rtc_read(int64_t* utc_seconds) { (void)utc_seconds; return false; }
+bool board_rtc_write(int64_t utc_seconds) { (void)utc_seconds; return false; }
+bool board_environment_poll(uint32_t now, hal_environment_reading_t* reading) { (void)now; (void)reading; return false; }
 
 bool board_radio_begin(void) {
   digitalWrite(PIN_RADIO_ENABLE, LOW);

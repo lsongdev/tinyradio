@@ -11,4 +11,5 @@ typedef struct {
   uint16_t utc_minutes;
   int16_t offset_minutes;
 } rds_clock_sync_t;
-void rds_clock_sync_update(rds_clock_sync_t* sync, const rds_clock_time_t* sample, device_clock_t* clock, uint64_t now_ms);
+// Returns true when it changed the clock's time or offset.
+bool rds_clock_sync_update(rds_clock_sync_t* sync, const rds_clock_time_t* sample, device_clock_t* clock, uint64_t now_ms);

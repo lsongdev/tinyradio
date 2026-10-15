@@ -1,7 +1,8 @@
 #include "device_clock.h"
+#include "calendar.h"
 #include <string.h>
 const char* time_source_name(time_source_t source) {
-  return source == TIME_SOURCE_RDS ? "RDS" : source == TIME_SOURCE_NTP ? "NTP" : "NONE";
+  return source == TIME_SOURCE_RDS ? "RDS" : source == TIME_SOURCE_NTP ? "NTP" : source == TIME_SOURCE_RTC ? "RTC" : "NONE";
 }
 void device_clock_synchronize(device_clock_t* clock, int64_t utc_seconds, time_source_t source, uint64_t now_ms) {
   if (source == TIME_SOURCE_NONE) return;
@@ -18,5 +19,8 @@ device_time_t device_clock_read(const device_clock_t* clock, uint64_t now_ms) {
   int64_t day_seconds = result.local_seconds % 86400;
   if (day_seconds < 0) day_seconds += 86400;
   result.hour = day_seconds / 3600; result.minute = day_seconds / 60 % 60; result.second = day_seconds % 60;
+  unsigned month, day;
+  calendar_date(calendar_day_of(result.local_seconds), &result.year, &month, &day);
+  result.month = (uint8_t)month; result.day = (uint8_t)day;
   return result;
 }

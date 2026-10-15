@@ -1,13 +1,15 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
-typedef enum { TIME_SOURCE_NONE, TIME_SOURCE_RDS, TIME_SOURCE_NTP } time_source_t;
+typedef enum { TIME_SOURCE_NONE, TIME_SOURCE_RDS, TIME_SOURCE_NTP, TIME_SOURCE_RTC } time_source_t;
 const char* time_source_name(time_source_t source);
 typedef struct {
   bool valid;
   int64_t utc_seconds, local_seconds;
   int16_t utc_offset_minutes;
-  uint8_t hour, minute, second;
+  int64_t year;                 // Local date.
+  uint8_t month, day;
+  uint8_t hour, minute, second; // Local time of day.
   time_source_t source;
 } device_time_t;
 // A shared device clock. Sources submit Unix UTC seconds; timezone is separate.

@@ -50,9 +50,9 @@ bool board_display_begin(void) {
   ledcSetup(0, 5000, 8);
   ledcAttachPin(PIN_BACKLIGHT, 0);
   board_display_set_brightness(128);
-  // GPIO12 is the pulled-up DOWN key; restore its pull-up after SPI setup,
-  // as the original firmware does.
-  pinMode(PIN_DOWN, INPUT_PULLUP);
+  // GPIO12 is pulled-up key C; restore its pull-up after SPI setup, as the
+  // original firmware does.
+  pinMode(PIN_KEY_C, INPUT_PULLUP);
   return true;
 }
 void board_display_set_brightness(uint8_t value) { ledcWrite(0, value); }

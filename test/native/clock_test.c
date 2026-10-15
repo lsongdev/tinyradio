@@ -26,6 +26,7 @@ int main(void) {
   const int64_t utc = ((int64_t)61327 - 40587) * 86400 + 1005 * 60;
   assert(local.valid && local.utc_seconds == utc && local.utc_offset_minutes == 480);
   assert(local.local_seconds / 86400 + 40587 == 61328 && local.hour == 0 && local.minute == 45);
+  assert(local.year == 2026 && local.month == 10 && local.day == 15); // MJD 61328 local date.
   assert(device_clock_read(&clock, 61000).minute == 46);
   assert(device_clock_read(&clock, 601000).valid && device_clock_read(&clock, 601000).minute == 55); // No expiry.
   // Re-reading an old sample, even with a new sequence or PI, cannot rewind.
