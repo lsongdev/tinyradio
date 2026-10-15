@@ -32,14 +32,14 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.18
       - name: Check core logic and capture tools
-        run: sh tools/test.sh
-      - name: Build ATS Mini firmware
-        run: pio run -e ats-mini
+        run: make test
+      - name: Build firmware for every board
+        run: make build
       - name: Package firmware
-        run: python tools/package_firmware.py --output dist
+        run: make package PYTHON=python OUTPUT=dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ats-mini-firmware-${{ github.sha }}
+          name: tinyradio-firmware-${{ github.sha }}
           path: dist/*
           if-no-files-found: error
           retention-days: 14
@@ -52,12 +52,12 @@ jobs:
     permissions:
       contents: write
     concurrency:
-      group: ats-mini-daily-release
+      group: daily-release
       cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ats-mini-firmware-${{ github.sha }}
+          name: tinyradio-firmware-${{ github.sha }}
           path: dist
       - name: Publish or update today's prerelease
         env:
@@ -76,19 +76,22 @@ jobs:
           fi
           day=$(date +%F)
           tag="daily-$day"
-          title="ATS Mini daily build $day"
+          title="TinyRadio daily build $day"
           cat > notes.md <<EOF_NOTES
-          Firmware for the Sunnygold SI4732 Mini Radio (ESP32-S3, PCB 1.2 reference).
+          Firmware for SI4732 receivers, one set of files per board:
+
+          - ats-mini-*: Sunnygold SI4732 Mini Radio (ESP32-S3, PCB 1.2 reference).
+          - geeknest-v5a-*: GeekNest Radio V5A (ESP32), experimental. Set the speaker switch to Analog and back up the original flash first.
 
           - Commit: [$BUILD_SHA](https://github.com/$GH_REPO/commit/$BUILD_SHA)
           - Build: [GitHub Actions]($RUN_URL)
           - Day: $day (Asia/Shanghai)
 
           Successful master builds update this prerelease on the same day.
-          Download ats-mini-firmware.bin for an application update (preserves compatible settings),
-          or ats-mini-install.zip for all flashing files, instructions, source snapshot, and notices.
-          ats-mini-full.bin is a complete 16 MiB image flashed at 0x0; it resets saved settings/data.
-          Check ats-mini-sha256sums.txt for file hashes and ats-mini-build-info.json for versions.
+          For each board, download BOARD-firmware.bin for an application update (preserves compatible settings),
+          or BOARD-install.zip for all flashing files, instructions, source snapshot, and notices.
+          BOARD-full.bin is a complete flash image (16 MiB ATS Mini, 4 MiB V5A) written at 0x0; it resets saved settings/data.
+          Check BOARD-sha256sums.txt for file hashes and BOARD-build-info.json for versions.
           Original project code is MIT; bundled third-party assets and SSB patch retain separate terms.
           EOF_NOTES
           if gh api "repos/$GH_REPO/git/ref/tags/$tag" > /dev/null 2>&1; then
