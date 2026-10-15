@@ -39,6 +39,7 @@ typedef struct {
   bool band_locked;             // Manual tuning stays within the current band.
   int seek_arrow;               // Requested or active seek direction; 0 hides the arrow.
   bool audio_status_known;      // Stereo/mono is meaningful.
+  bool rds_synchronized;        // Current RDS decoder sync, independent of retained station text.
 } ui_view_t;
 // The shared layout fills the top 320 x 170. Taller panels get a board-extras
 // area below it (audio spectrum, date, time, environment).
