@@ -4,7 +4,7 @@
 radio_band_t radio_bands[RADIO_BAND_COUNT] = {
   {"LW", 153000, 279000, 198000, false, true, false, true},
   {"MW", 520000, 1710000, 999000, false, true, false, true},
-  {"SW", 2300000, 26100000, 7100000, false, true, false, true},
+  {"SW", 1711000, 30000000, 7100000, false, true, false, true}, // Up to the SI4732 AM tuning limit.
   {"VHF", 64000000, 108000000, 100000000, true, false, false, true},
   {"AIR", 118000000, 137000000, 118000000, false, false, true, false},
 };

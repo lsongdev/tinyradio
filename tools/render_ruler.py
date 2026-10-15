@@ -2,7 +2,7 @@
 """Render the firmware's 320x170 frequency ruler as an SVG preview.
 
 Example:
-  python3 tools/render_ruler.py --band SW --frequency 26.1MHz --step 100k \
+  python3 tools/render_ruler.py --band SW --frequency 30MHz --step 100k \
       --output /tmp/sw-ruler.svg
 
 The ruler geometry, band limits, tuning-step transitions, endpoint clamping,
@@ -29,7 +29,7 @@ class Band:
 BANDS = [
     Band("LW", 153_000, 279_000, 1_000),
     Band("MW", 520_000, 1_710_000, 9_000),
-    Band("SW", 2_300_000, 26_100_000, 1_000),
+    Band("SW", 1_711_000, 30_000_000, 1_000),
     Band("VHF", 64_000_000, 108_000_000, 100_000, True),
 ]
 INDEX = {band.name: i for i, band in enumerate(BANDS)}
@@ -185,7 +185,7 @@ def render(band_name: str, frequency: int, step: int, output: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--band", choices=INDEX, default="SW")
-    parser.add_argument("--frequency", type=parse_frequency, default=parse_frequency("26.1MHz"),
+    parser.add_argument("--frequency", type=parse_frequency, default=parse_frequency("30MHz"),
                         help="center frequency, e.g. 25.9MHz or 25900000")
     parser.add_argument("--step", type=parse_step, default=parse_step("100k"),
                         help="current band's tuning step, e.g. 100k or 10k")
