@@ -1,8 +1,8 @@
-# ATS Mini
+# TinyRadio
 
 [![Firmware](https://github.com/lsongdev/ats-mini/actions/workflows/firmware.yml/badge.svg)](https://github.com/lsongdev/ats-mini/actions/workflows/firmware.yml)
 
-**AM/FM/SSB receiver firmware for the Sunnygold SI4732 Mini Radio.**
+**AM/FM/SSB receiver firmware for SI4732 radios.**
 
 Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stations, and resume your saved settings when you switch the radio back on.
 
@@ -23,11 +23,20 @@ Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stati
 - RDS station names, scrolling radio text, and broadcast clock, including UTF-8 eRT support.
 - Saved tuning and reception settings, plus full-screen screenshot export.
 
+## Supported hardware
+
+| Board | MCU | Build | Status |
+| --- | --- | --- | --- |
+| Sunnygold SI4732 Mini (ATS Mini) | ESP32-S3 | `ats-mini` | Supported; release builds and the [hardware facts](docs/hardware.md) cover this board |
+| GeekNest V5A | ESP32 | `v5a` | Experimental: display, encoder, FM reception, saved settings, and power on/off verified; AIR, the extra keys, and the full 240-row layout are not yet supported |
+
+Both boards share one UI, receiver logic, and SI4732 driver. Board-specific code lives in `src/boards/<name>/`; see [Development](docs/development.md#adding-a-board).
+
 ## Get started
 
-Download firmware from the [releases page](https://github.com/lsongdev/ats-mini/releases) and follow the [installation guide](docs/user-manual.md#installing-or-updating-firmware). Successful builds update the day's prerelease. Confirm that your receiver matches the [supported hardware](docs/hardware.md).
+For the ATS Mini, download firmware from the [releases page](https://github.com/lsongdev/ats-mini/releases) and follow the [installation guide](docs/user-manual.md#installing-or-updating-firmware). Successful builds update the day's prerelease. Confirm that your receiver matches the [supported hardware](docs/hardware.md). The GeekNest V5A is built from source with `pio run -e v5a -t upload`; see [Development](docs/development.md#build-and-flash).
 
-After switching on, rotate to tune and short-press to select a control. Long-press Frequency to enter seek mode; long-press Volume to toggle mute. The [user manual](docs/user-manual.md) explains the controls and display.
+After switching on, rotate to tune and short-press to select a control. Long-press Frequency to enter seek mode; long-press Volume to toggle mute. On the V5A, long-press actions run when the encoder is released, and holding it for two seconds powers the radio off. The [user manual](docs/user-manual.md) explains the controls and display.
 
 ## Documentation
 
@@ -35,8 +44,8 @@ After switching on, rotate to tune and short-press to select a control. Long-pre
 | --- | --- |
 | [User manual](docs/user-manual.md) | Installation, everyday controls, screen indicators, and troubleshooting |
 | [Design](docs/design.md) | Architecture, tuning and seek, UI, RDS/eRT, and saved settings |
-| [Development](docs/development.md) | Building, flashing, diagnostics, tests, tools, releases, and third-party notices |
-| [Hardware facts](docs/hardware.md) | Schematics, GPIOs, power, reference assets, and verified observations |
+| [Development](docs/development.md) | Building, flashing, boards, diagnostics, tests, tools, releases, and third-party notices |
+| [Hardware facts](docs/hardware.md) | ATS Mini schematics, GPIOs, power, reference assets, and verified observations |
 
 ## License and credits
 

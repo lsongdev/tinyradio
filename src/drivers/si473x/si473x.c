@@ -75,14 +75,22 @@ static bool property(si473x_t* chip, uint16_t id, uint16_t value) {
   const uint8_t bytes[] = {0x12, 0, (uint8_t)(id >> 8), (uint8_t)id, (uint8_t)(value >> 8), (uint8_t)value};
   return command(chip, bytes, sizeof bytes, NULL, 0);
 }
+enum { XOSCEN = 0x10 };
+static uint8_t clock_source(const si473x_t* chip, uint8_t function) {
+  return chip->external_clock ? (uint8_t)(function & ~XOSCEN) : (uint8_t)(function | XOSCEN);
+}
 static bool power_up(si473x_t* chip, uint8_t function) {
-  const uint8_t bytes[] = {0x01, function, 0x05}; // Crystal oscillator, analog L/R output
+  const uint8_t bytes[] = {0x01, clock_source(chip, function), 0x05}; // Analog L/R output
   if (!command(chip, bytes, sizeof bytes, NULL, 0)) return false;
   // AN332 POWER_UP: CTS only confirms command completion. With XOSCEN,
   // allow at least 500 ms for the crystal to settle before the first tune.
-  delay(500);
+  delay(chip->external_clock ? 20 : 500);
   chip->powered = true;
   return true;
+}
+// REFCLK = RCLK / prescale = 32768 Hz. Valid only after any patch download.
+static bool set_reference(si473x_t* chip) {
+  return !chip->external_clock || (property(chip, 0x0201, 32768) && property(chip, 0x0202, 1));
 }
 static bool get_revision(si473x_t* chip) {
   const uint8_t cmd[] = {0x10}; uint8_t response[9];
@@ -95,7 +103,7 @@ static bool get_revision(si473x_t* chip) {
   return true;
 }
 static bool load_ssb(si473x_t* chip) {
-  uint8_t response[8]; const uint8_t query[] = {0x01, 0x1f, 0x05};
+  uint8_t response[8]; const uint8_t query[] = {0x01, clock_source(chip, 0x0f), 0x05};
   if (!command(chip, query, sizeof query, response, sizeof response)) return false;
   dump(chip, "LIBRARY:", response, sizeof response);
   // amrx_6_0_1 is a component version, not a library ID. SI4732-A10
@@ -106,7 +114,7 @@ static bool load_ssb(si473x_t* chip) {
     chip->log(line);
   }
   // Query-library function returns to power-down automatically.
-  if (!power_up(chip, 0x31)) return false;
+  if (!power_up(chip, 0x21)) return false; // PATCH + AM_SW_LW
   delay(50);
   size_t index15 = 0;
   for (size_t offset = 0, line = 0; offset < sizeof ssb_patch_content; offset += 7, ++line) {
@@ -119,7 +127,7 @@ static bool load_ssb(si473x_t* chip) {
     delayMicroseconds(300);
   }
   delay(10);
-  if (!get_revision(chip)) return false;
+  if (!set_reference(chip) || !get_revision(chip)) return false;
   if (chip->revision.patch != 0xA902) return fail(chip, SI473X_PATCH_ERROR);
   // AUDIOBW=1 (2.2kHz), SBCUTFLT=1, AVCEN=1, AFC disabled.
   return property(chip, 0x0101, 0x9011) && property(chip, 0x3302, 0);
@@ -147,7 +155,7 @@ bool si473x_configure(si473x_t* chip, si473x_mode_t mode, uint8_t volume) {
     if (si473x_is_ssb(mode)) {
       if (!load_ssb(chip)) return false;
     } else {
-      if (!power_up(chip, mode == SI473X_FM ? 0x10 : 0x11) || !get_revision(chip)) return false;
+      if (!power_up(chip, mode == SI473X_FM ? 0x00 : 0x01) || !set_reference(chip) || !get_revision(chip)) return false;
       if (mode == SI473X_FM) {
         if (!property(chip, 0x1100, 1) || !property(chip, 0x1102, 0)) return false; // 50us FM de-emphasis
         // Enable RDS, with all corrected blocks (BLE 0..2) admitted to the FIFO.
@@ -159,6 +167,16 @@ bool si473x_configure(si473x_t* chip, si473x_mode_t mode, uint8_t volume) {
   chip->carrier_known = false; chip->confirmed_hz = 0;
   if (!si473x_set_volume(chip, volume) || !si473x_set_muted(chip, false)) return false;
   chip->configured = true;
+  return true;
+}
+bool si473x_power_down(si473x_t* chip) {
+  if (chip->seeking && !si473x_cancel_seek(chip)) return false;
+  rds_decoder_clear(&chip->rds); memset(&chip->rds_status, 0, sizeof chip->rds_status);
+  chip->configured = chip->tuning = chip->carrier_known = false;
+  if (!chip->powered) return true;
+  const uint8_t down[] = {0x11};
+  if (!command(chip, down, 1, NULL, 0)) return false;
+  chip->powered = false;
   return true;
 }
 bool si473x_set_volume(si473x_t* chip, uint8_t volume) { return property(chip, 0x4000, volume > 63 ? 63 : volume); }

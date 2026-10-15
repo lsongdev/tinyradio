@@ -7,6 +7,8 @@
 #define BOARD_STORAGE_NAMESPACE "ats-mini" // Keep: existing units store settings here.
 #define BOARD_SCREEN_WIDTH 320
 #define BOARD_SCREEN_HEIGHT 170
+#define BOARD_RADIO_EXTERNAL_CLOCK 0 // SI4732 has its own 32.768 kHz crystal.
+#define BOARD_CAN_POWER_OFF 0        // Hardware power switch; no board_power_off().
 
 // Safe outputs (audio muted, amplifier off), battery ADC, encoder and button.
 // The display and radio rail are started separately by the application.

@@ -20,4 +20,5 @@ run rds test/native/rds_test.c $rds
 run ert test/native/ert_test.c $rds
 run clock test/native/clock_test.c $rds $clock
 run driver test/native/driver_test.c src/drivers/si473x/si473x.c $rds $clock
+run si5351 test/native/si5351_test.c src/drivers/si5351/si5351.c
 python3 -m unittest discover -s test -p 'test_*.py'

@@ -22,10 +22,12 @@ typedef struct {
 } si473x_signal_t;
 typedef struct { bool synchronized; uint8_t queued; uint32_t groups, overruns; } si473x_rds_status_t;
 typedef struct { uint8_t part, major, minor, component_major, component_minor, chip; uint16_t patch; } si473x_revision_t;
-// Fields after `log` are driver state: read them, never write them.
+// Fields after `external_clock` are driver state: read them, never write them.
 typedef struct {
   i2c_bus_t bus;
   void (*log)(const char* line); // Optional diagnostics, without a trailing newline.
+  // False: 32.768 kHz crystal on the chip. True: 32.768 kHz clock driven into RCLK.
+  bool external_clock;
   uint8_t address;
   si473x_error_t error;
   si473x_mode_t mode;
@@ -55,4 +57,6 @@ bool si473x_read_rds(si473x_t* chip);
 bool si473x_set_reception(si473x_t* chip, const si473x_reception_t* settings);
 bool si473x_set_volume(si473x_t* chip, uint8_t volume);
 bool si473x_set_muted(si473x_t* chip, bool muted);
+// POWER_DOWN; begin() and configure() bring the chip back.
+bool si473x_power_down(si473x_t* chip);
 const char* si473x_error_text(const si473x_t* chip);
