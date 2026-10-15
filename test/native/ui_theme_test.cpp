@@ -37,7 +37,7 @@ int main() {
   view.reception.soft_mute_db = 16; view.band_locked = view.seek_mode = true; view.seek_arrow = 1;
 
   // Theme changes must repaint the extras even with identical telemetry and bars.
-  for (const auto buffers : {std::pair<bool, bool>{true, true}, {true, false}, {false, false}}) {
+  for (const auto& buffers : {std::pair<bool, bool>{true, true}, {true, false}, {false, false}}) {
     const bool buffered = buffers.first;
     frame_available = buffered; extras_available = buffers.second;
     draws.clear();
