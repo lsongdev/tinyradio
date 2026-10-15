@@ -16,11 +16,11 @@
 
 Switch on the receiver. It restores saved settings and starts with Frequency focused, ready for manual tuning. Rotate the encoder to tune, short-press to select another control, and rotate to change that control.
 
-For board-specific information, see [Hardware facts](hardware.md). Source build commands are in [Development](development.md#build-and-flash).
+For board-specific information, see [Hardware facts](hardware-ats.md). Source build commands are in [Development](development.md#build-and-flash).
 
 ## Installing or updating firmware
 
-Download the install ZIP from the [releases page](https://github.com/lsongdev/ats-mini/releases). Successful `master` builds update the prerelease for that Shanghai calendar day. Check your board against the [supported hardware](hardware.md) and follow `FLASHING.txt` in the ZIP.
+Download the install ZIP from the [releases page](https://github.com/lsongdev/ats-mini/releases). Successful `master` builds update the prerelease for that Shanghai calendar day. Check your board against the [supported hardware](hardware-ats.md) and follow `FLASHING.txt` in the ZIP.
 
 | File | Purpose |
 | --- | --- |
@@ -151,7 +151,7 @@ Normal firmware updates preserve NVS. If you switch off within the two-second sa
 
 ## Battery estimate
 
-The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered. When external power is detected, the status bar shows a full cyan battery icon and `USB`; the full icon indicates USB power rather than measured cell charge. An implausible voltage reading shows `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware.md#battery-indication) for calibration and measurement limits.
+The board's ADC measures a supply node that may follow USB voltage, so battery percentage is unreliable while USB-powered. When external power is detected, the status bar shows a full cyan battery icon and `USB`; the full icon indicates USB power rather than measured cell charge. An implausible voltage reading shows `--%`. On battery power, the percentage is a simple voltage estimate. See [Hardware facts](hardware-ats.md#battery-indication) for calibration and measurement limits.
 
 ## Screenshots
 
@@ -166,6 +166,6 @@ Connect USB and use the [capture procedure](development.md#screen-capture-and-ru
 | SI4732 error on screen | Short-press to retry. Record the error and serial status; confirm the supported board wiring. |
 | Screenshot times out | Flash the current firmware, select the correct USB port, and close other serial monitors. |
 | Screenshot reports no framebuffer | Restart the receiver; capture requires successful framebuffer allocation. |
-| Display orientation or colors differ | Board/display variants exist. Verify the controller and configuration against [Hardware facts](hardware.md). |
+| Display orientation or colors differ | Board/display variants exist. Verify the controller and configuration against [Hardware facts](hardware-ats.md). |
 
 For bug reports, include board markings if known, firmware commit, frequency/mode, reproduction steps, a screenshot, and serial status. Native and device validation procedures are in [Development](development.md#validation).

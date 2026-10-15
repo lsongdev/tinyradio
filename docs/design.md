@@ -1,6 +1,6 @@
 # Firmware Design
 
-This document explains how the current firmware works. Build, diagnostics, tools, tests, and release procedures are in [Development](development.md). Board evidence is in [Hardware facts](hardware.md); everyday operation is in the [User manual](user-manual.md).
+This document explains how the current firmware works. Build, diagnostics, tools, tests, and release procedures are in [Development](development.md). Board evidence is in [Hardware facts](hardware-ats.md); everyday operation is in the [User manual](user-manual.md).
 
 - [Architecture](#architecture)
 - [Frequency model](#frequency-model)
@@ -122,7 +122,7 @@ Defaults are VHF/FM 100 MHz, 100 kHz step, volume 18/63, brightness 128/255, unm
 
 The board averages 32 calibrated `analogReadMilliVolts()` readings with 11 dB attenuation, then computes `volts = ADC_millivolts × 2 × BATTERY_CALIBRATION / 1000`. The software defaults to a calibration factor of 1.0. Readings outside 2.5–5.5 V are implausible; values above 4.35 V indicate suspected external power. This threshold is a heuristic, not USB connection detection. Battery percentage is `int((volts - 3.2) × 100)`, clamped to 0–100.
 
-The UI shows `--%` for an implausible reading and a full cyan battery with `USB` for suspected external power. The full icon does not mean the cell is charged. The measured supply node is described in [Hardware facts](hardware.md#battery-indication); calibration instructions are in [Development](development.md#battery-calibration).
+The UI shows `--%` for an implausible reading and a full cyan battery with `USB` for suspected external power. The full icon does not mean the cell is charged. The measured supply node is described in [Hardware facts](hardware-ats.md#battery-indication); calibration instructions are in [Development](development.md#battery-calibration).
 
 ## Full-screen capture
 
