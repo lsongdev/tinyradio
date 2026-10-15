@@ -178,20 +178,22 @@ void ui_draw(const ui_view_t* view) {
     g.setCursor(152, 7); g.print(view->clock);
   }
   uint16_t color = view->field == UI_FIELD_BRIGHTNESS ? TFT_YELLOW : TFT_LIGHTGREY;
-  drawSun(g, 196, color); g.setTextColor(color, TFT_BLACK);
-  g.setCursor(212, 7); g.printf("%d%%", (view->brightness * 100 + 127) / 255);
+  drawSun(g, 190, color); g.setTextColor(color, TFT_BLACK);
+  g.setCursor(206, 7); g.printf("%d%%", (view->brightness * 100 + 127) / 255);
   const uint16_t speakerColor = view->muted ? TFT_RED : !view->audio_status_known ? TFT_DARKGREY :
                                 view->signal.stereo ? TFT_CYAN : TFT_LIGHTGREY;
-  drawSpeaker(g, 238, speakerColor, view->muted, view->volume);
+  drawSpeaker(g, 232, speakerColor, view->muted, view->volume);
   color = view->field == UI_FIELD_VOLUME ? TFT_YELLOW : view->muted ? TFT_RED : TFT_LIGHTGREY;
   g.setTextColor(color, TFT_BLACK);
-  g.setCursor(254, 7); g.printf("%d%%", (view->volume * 100 + 31) / 63);
+  g.setCursor(248, 7); g.printf("%d%%", (view->volume * 100 + 31) / 63);
   const auto& supply = view->supply;
   color = !supply.plausible ? TFT_RED : supply.external_power_likely ? TFT_CYAN : supply.estimated_percent < 20 ? TFT_RED : TFT_LIGHTGREY;
-  g.drawRect(280, 6, 13, 9, color); g.drawFastVLine(293, 8, 5, color);
-  if (supply.plausible) g.fillRect(282, 8, supply.external_power_likely ? 9 : supply.estimated_percent * 9 / 100, 5, color);
-  g.setTextColor(color, TFT_BLACK); g.setCursor(296, 7);
-  if (!supply.plausible) g.print("--%");
+  g.drawRect(274, 6, 13, 9, color); g.drawFastVLine(287, 8, 5, color);
+  if (supply.plausible) g.fillRect(276, 8, supply.external_power_likely ? 9 : supply.estimated_percent * 9 / 100, 5, color);
+  // The text beside the icon shows the percentage or, when chosen, the voltage ("4.20V" fits to the edge).
+  g.setTextColor(view->field == UI_FIELD_BATTERY ? TFT_YELLOW : color, TFT_BLACK); g.setCursor(290, 7);
+  if (!supply.plausible) g.print(view->battery_volts ? "-.--V" : "--%");
+  else if (view->battery_volts) g.printf("%.2fV", supply.volts);
   else if (supply.external_power_likely) g.print("USB");
   else g.printf("%u%%", supply.estimated_percent);
 

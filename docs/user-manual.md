@@ -60,13 +60,14 @@ Manual tuning crosses from one band to the next at its endpoint. It stops at the
 | Gesture | Result |
 | --- | --- |
 | Rotate | Adjust the focused value |
-| Short-press | Cycle focus through Band → Frequency → Mode → BW → AGC → SM → Step → Volume → Brightness |
+| Short-press | Cycle focus around the screen: Band → Frequency → Mode → BW → AGC → SM → Step → Battery → Volume → Brightness → Band. Power-on starts at Frequency |
 | Long-press Frequency | Toggle seek mode in AM/FM |
 | Rotate in seek mode | Search up/down within the current band |
 | Short-press in seek mode | Cancel search at the current frequency, return to manual tuning, and keep Frequency focused |
 | Long-press Volume | Toggle mute while retaining the chosen volume |
 | Long-press Band | Lock or unlock the current band: manual tuning stops at its edges instead of crossing |
 | Short-press on receiver error | Reset the radio chip and retry |
+| Hold 3 s (V5A) | `Release to power off` appears; releasing saves settings and powers off. Press the encoder to switch on. On the V5A, long-press actions run on release so a longer hold can power off |
 
 A long press lasts approximately 650 ms. Releasing it does not generate a second short press. A locked band's name turns orange; the lock follows band changes and is cleared at power-on. A key held while the radio starts must be released before it acts. Seek is unavailable in LSB/USB; seek mode is magenta, while ordinary focus is yellow. Station text remains visible in idle seek mode; an active search temporarily shows frequency instead.
 
@@ -130,6 +131,7 @@ Once set, the clock keeps running when you tune, change band/mode, search, lose 
 | Step | Manual tuning increment |
 | Volume | Audio level, 0–100% |
 | Brightness | Display backlight level |
+| Battery | Rotate to switch between the percentage estimate and the supply voltage (session only) |
 
 SM is soft mute, not a squelch threshold. BW, AGC, and SM are remembered separately for each demodulation mode.
 

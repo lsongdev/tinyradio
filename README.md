@@ -36,7 +36,7 @@ Both boards share one UI, receiver logic, and SI4732 driver. Board-specific code
 
 For the ATS Mini, download firmware from the [releases page](https://github.com/lsongdev/ats-mini/releases) and follow the [installation guide](docs/user-manual.md#installing-or-updating-firmware). Successful builds update the day's prerelease. Confirm that your receiver matches the [supported hardware](docs/hardware-ats.md). The same prerelease carries `geeknest-v5a-*` files for the V5A; back up its original flash first. To build and flash from source, run `make flash BOARD=ats-mini` or `make flash BOARD=v5a`; see [Development](docs/development.md#build-and-flash).
 
-After switching on, rotate to tune and short-press to select a control. Long-press Frequency to enter seek mode; long-press Volume to toggle mute. On the V5A, long-press actions run when the encoder is released, and holding it for two seconds powers the radio off. The [user manual](docs/user-manual.md) explains the controls and display.
+After switching on, rotate to tune and short-press to select a control. Long-press Frequency to enter seek mode; long-press Volume to toggle mute. On the V5A, long-press actions run when the encoder is released, and holding it for three seconds powers the radio off. The [user manual](docs/user-manual.md) explains the controls and display.
 
 ## Documentation
 

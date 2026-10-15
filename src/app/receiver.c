@@ -25,6 +25,7 @@ static int brightness = 128;
 static si473x_reception_t reception[4] = {{0, -1, 16}, {4, -1, 0}, {3, -1, 0}, {3, -1, 0}};
 static bool reception_dirty = true;
 static bool band_locked = false; // Session only; not saved.
+static bool battery_volts = false; // Session only; not saved.
 static uint32_t frontend_hz = 0;  // RF the board front end is set for; 0 forces a new setting.
 static bool frontend_failed = false;
 static hal_settings_storage_t storage;
@@ -42,7 +43,7 @@ static bool screenshot_requested = false;
 static bool reconfigure = true, held = false, previous_pressed = false, audio_ready = false, seek_mode = false;
 static int pending_seek = 0, seek_direction = 0;
 static bool long_pending = false, power_pending = false;
-enum { LONG_PRESS_MS = 650, POWER_OFF_MS = 2000 };
+enum { LONG_PRESS_MS = 650, POWER_OFF_MS = 3000 }; // Power off well apart from long-press actions.
 static uint32_t pressed_at = 0, edited_at = 0, last_signal = 0, last_battery = 0, last_draw = 0, last_tune = 0, last_rds = 0;
 
 static int clamp(int value, int low, int high) { return value < low ? low : value > high ? high : value; }
@@ -141,7 +142,7 @@ static void draw(void) {
   memset(&view, 0, sizeof view);
   view.model = &model; view.field = field;
   view.volume = volume; view.brightness = brightness; view.muted = muted;
-  view.supply = supply; view.clock = clock_valid ? clock_text : NULL;
+  view.supply = supply; view.battery_volts = battery_volts; view.clock = clock_valid ? clock_text : NULL;
   view.date_time = time.valid ? date_text : NULL;
   view.environment = environment; view.environment_known = environment_known;
   view.signal = chip.signal; view.reception = *settings();
@@ -229,6 +230,7 @@ static void turn(int delta) {
       brightness = clamp(brightness + delta * 8, 8, 255);
       if (lcd) board_display_set_brightness(brightness);
       break;
+    case UI_FIELD_BATTERY: if (delta % 2) battery_volts = !battery_volts; break;
     case UI_FIELD_COUNT: break;
   }
   dirty = true;
