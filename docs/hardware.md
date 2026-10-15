@@ -49,7 +49,7 @@ The PDFs are unchanged copies. Reference photographs were renamed, not modified;
 
 ## GPIO map
 
-The authoritative software mapping is [`src/hal/board.h`](../src/hal/board.h). These are GPIO numbers, not module-pad numbers.
+The authoritative software mapping is [`src/boards/ats_mini/pins.h`](../src/boards/ats_mini/pins.h). These are GPIO numbers, not module-pad numbers.
 
 | Resource | GPIO | Behavior |
 | --- | --- | --- |
@@ -91,4 +91,4 @@ Firmware ADC averaging, plausibility thresholds, external-power inference, and p
 - FM 95.9 MHz has yielded PS `LOVE959` and ordinary RT on the connected unit. After flashing the eRT implementation, PS and RDS synchronization were observed again, but no eRT announcement was received during that observation. UTF-8 eRT is validated with constructed groups and a simulated FIFO, not yet with an on-air eRT broadcast.
 - Exact PCB revision, fitted LCD-controller markings, RF sensitivity, SSB listening quality, absolute frequency accuracy, and battery calibration remain unverified.
 
-The [development guide](development.md) covers the battery demo, diagnostics, and verification procedures. Host tests and tune readback do not establish RF sensitivity, audio quality, or oscillator accuracy.
+The [development guide](development.md) covers battery calibration, diagnostics, and verification procedures. Host tests and tune readback do not establish RF sensitivity, audio quality, or oscillator accuracy.

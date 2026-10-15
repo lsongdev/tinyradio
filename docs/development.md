@@ -15,17 +15,33 @@ Build, flash, test, diagnose, and package the firmware from this guide. Implemen
 
 | Path | Content |
 | --- | --- |
-| `src/main.cpp` | Receiver entry point; optional battery demo |
-| `src/app/` | Application coordination and drawing |
+| `src/main.cpp` | Arduino entry point; forwards `setup()`/`loop()` to the receiver |
+| `src/app/` | Application coordination, RDS clock adapter, and serial diagnostics |
+| `src/ui/` | Screen layout, drawing, and screenshot export behind a C API |
+| `src/boards/` | Board selector and one directory per supported board |
 | `src/drivers/si473x/` | Chip driver, RDS decoders, and bundled SSB patch |
-| `src/hal/` | Board resources, GPIO mapping, and NVS access |
+| `src/hal/` | Board-independent ESP32 button, encoder, I2C, NVS, serial, and timer |
 | `src/services/` | Shared device clock, independent of RDS or future network sources |
 | `src/radio/` | Band model, frequency formatting, and settings serialization |
-| `src/examples/` | Battery-screen example |
 | `tools/` | Host tests, screenshot capture, ruler preview, and firmware packaging |
-| `test/native/` | Host C++ tests and Arduino/I2C stubs |
+| `test/native/` | Host C99 tests and Arduino stubs |
 | `test/` | Python capture tests and opt-in device smoke scripts |
 | `docs/` | Four guides, hardware references, screenshots, and license texts |
+
+### Languages
+
+The firmware is C. C++ appears only where a dependency requires it: LovyanGFX drawing (`src/ui/ui.cpp`, each board's `display.cpp`), Arduino's `Serial` object (`src/hal/serial.cpp`), and `src/main.cpp`, because Arduino declares `setup()`/`loop()` with C++ linkage. Each of these files implements or calls a C interface and includes C headers inside one `extern "C" { ... }` block; C headers carry no `__cplusplus` guards. Headers ending in `.h` are C; `src/boards/display.hpp` is the only C++ header.
+
+### Adding a board
+
+Each board lives in `src/boards/<name>/` and is selected at compile time; there are no virtual interfaces. A new board needs:
+
+1. A PlatformIO environment that defines `BOARD_<NAME>` and sets `build_src_filter = +<*> -<boards/*/> +<boards/<name>/>`.
+2. A branch for that macro in [`src/boards/board.h`](../src/boards/board.h).
+3. `board.h` declaring the C API of [`ats_mini/board.h`](../src/boards/ats_mini/board.h): the `BOARD_*` constants and every `board_*()` function. Use a distinct `BOARD_STORAGE_NAMESPACE`; it must not change once units have saved settings.
+4. `display.cpp` configuring the LovyanGFX panel and defining `board_display_begin()`, `board_display_set_brightness()`, and `board_display_device()` from [`src/boards/display.hpp`](../src/boards/display.hpp).
+
+Reuse `src/hal/` pieces where the hardware matches. Keep board-only parts (I/O expanders, RF front ends, clocks) inside the board directory, behind `board_*()` functions, so the driver and application stay unchanged.
 
 ## Build and flash
 
@@ -43,9 +59,8 @@ pio device monitor --port /dev/ttyACM0 --baud 115200
 
 Replace `/dev/ttyACM0` with the receiver's port: macOS commonly uses `/dev/cu.usbmodem…`, and Windows uses `COM…`. Close other serial consumers before uploading. Normal PlatformIO uploads preserve compatible NVS settings. Prebuilt installation choices are in the [user manual](user-manual.md#installing-or-updating-firmware).
 
-[`platformio.ini`](../platformio.ini) pins `espressif32@6.12.0` and `LovyanGFX@1.2.7`, uses Arduino and the S3 build configuration, and selects 16 MB flash with `default_16MB.csv`. USB CDC is enabled at boot. PSRAM is not required by the firmware; the board ID does not identify the physical radio as an Espressif dev kit.
+[`platformio.ini`](../platformio.ini) pins `espressif32@6.12.0` and `LovyanGFX@1.2.7`, selects the board with `-D BOARD_ATS_MINI` and `build_src_filter`, uses Arduino and the S3 build configuration, and selects 16 MB flash with `default_16MB.csv`. USB CDC is enabled at boot. PSRAM is not required by the firmware; the board ID does not identify the physical radio as an Espressif dev kit.
 
-For the battery-screen example, add `-D BATTERY_DEMO` to `build_flags` temporarily and rebuild. [`src/main.cpp`](../src/main.cpp) selects `src/examples/battery_screen.cpp` instead of the receiver application. Remove the macro to return to normal firmware.
 
 ## Validation
 
@@ -86,6 +101,7 @@ At 115200 baud, commands are single characters without a required newline. `?` a
 | `rdssync`, `rdsfifo` | Current synchronization and last queried FIFO depth |
 | `rdsgroups`, `rdsoverruns` | Groups read and overruns observed since the last RDS invalidation |
 | `stored`, `save`, `writes` | Valid stored settings, pending save, and successful writes this boot |
+| `supply`, `adc` | Calibrated supply estimate in volts, and averaged pin reading in millivolts |
 
 A successful tune or `error=OK` does not establish that a station exists or that its audio is intelligible.
 
@@ -110,7 +126,7 @@ It previews the ruler geometry, not a live full screen. Its band ranges and geom
 
 ## Battery calibration
 
-Disconnect USB and measure `VCC_BAT` with a meter. Set `batteryCalibration` in [`src/hal/board.h`](../src/hal/board.h) to measured voltage divided by the firmware reading, then rebuild and compare. The battery demo displays supply voltage and, on battery power, estimated percentage. Push the encoder to show ADC details; rotate to adjust the backlight. Audio is muted and the radio rail stays off in this example. The calibration factor defaults to 1.0.
+Disconnect USB and measure `VCC_BAT` with a meter. Read the firmware's `supply` (volts) and `adc` (millivolts at the pin) from the serial `?` report. Set `BATTERY_CALIBRATION` in [`src/boards/ats_mini/pins.h`](../src/boards/ats_mini/pins.h) to measured voltage divided by that `supply` reading, then rebuild and compare. The calibration factor defaults to 1.0. The measurement is taken with the receiver running, so it includes the radio and audio load.
 
 The 1.71/1.702 factors found in some other firmware convert raw ADC codes; applying them to this HAL's calibrated millivolt readings would double-convert the measurement. Calibration does not turn the switched supply measurement into a dedicated cell gauge. See [Hardware facts](hardware.md#battery-indication) and the [battery interpretation](design.md#battery-interpretation).
 

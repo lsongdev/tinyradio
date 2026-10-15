@@ -6,8 +6,8 @@ Example:
       --output /tmp/sw-ruler.svg
 
 The ruler geometry, band limits, tuning-step transitions, endpoint clamping,
-label selection, and major-division spacing mirror src/app/receiver.cpp and
-src/radio/model.cpp. SVG output uses only the Python standard library.
+label selection, and major-division spacing mirror src/ui/ui.cpp and
+src/radio/model.c. SVG output uses only the Python standard library.
 """
 
 import argparse

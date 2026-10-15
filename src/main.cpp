@@ -1,10 +1,6 @@
-#include <Arduino.h>
-#ifdef BATTERY_DEMO
-#include "examples/battery_screen.h"
-void setup() { examples::beginBatteryScreen(); }
-void loop() { examples::updateBatteryScreen(); delay(1); }
-#else
+// Arduino declares setup() and loop() with C++ linkage; everything else is C.
+extern "C" {
 #include "app/receiver.h"
-void setup() { app::beginReceiver(); }
-void loop() { app::updateReceiver(); }
-#endif
+}
+void setup() { receiver_begin(); }
+void loop() { receiver_update(); }

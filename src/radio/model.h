@@ -1,46 +1,48 @@
 #pragma once
-#include "drivers/si473x/tuning.h"
+#include <stdbool.h>
 #include <stddef.h>
-namespace radio {
-using drivers::Mode;
-uint32_t stepOption(size_t bandIndex, Mode mode, int index);
-uint8_t stepOptionCount(size_t bandIndex, Mode mode);
-int stepOptionIndex(size_t bandIndex, Mode mode, uint32_t stepHz);
-struct Band { const char* name; uint32_t minHz, maxHz, initialHz; bool fm, available; };
-constexpr Band bands[] = {
-  {"LW", 153000, 279000, 198000, false, true},
-  {"MW", 520000, 1710000, 999000, false, true},
-  {"SW", 2300000, 26100000, 7100000, false, true},
-  {"VHF", 64000000, 108000000, 100000000, true, true},
-  {"AIR", 118000000, 137000000, 118000000, false, false},
-};
-constexpr size_t bandCount = sizeof bands / sizeof bands[0];
-inline bool allowed(const Band& band, Mode mode) {
-  return band.available && static_cast<uint8_t>(mode) <= 3 && (band.fm ? mode == Mode::FM : mode != Mode::FM);
+#include <stdint.h>
+#include "drivers/si473x/tuning.h"
+
+typedef struct {
+  const char* name;
+  uint32_t min_hz, max_hz, initial_hz;
+  bool fm, available;
+} radio_band_t;
+#define RADIO_BAND_COUNT 5
+extern const radio_band_t radio_bands[RADIO_BAND_COUNT];
+static inline bool radio_mode_allowed(const radio_band_t* band, si473x_mode_t mode) {
+  return band->available && (unsigned)mode <= SI473X_USB && (band->fm ? mode == SI473X_FM : mode != SI473X_FM);
 }
-class Model {
-public:
-  struct BandMemory { uint32_t frequencyHz; Mode mode; uint32_t stepHz; };
-  struct State { size_t band; BandMemory memories[bandCount]; };
-  Model();
-  State state() const;
-  bool restore(const State& state); // Validate all available bands before committing.
-  const Band& band() const { return bands[bandIndex_]; }
-  size_t bandIndex() const { return bandIndex_; }
-  Mode mode() const { return memories_[bandIndex_].mode; }
-  uint32_t frequencyHz() const { return memories_[bandIndex_].hz; }
-  uint32_t stepHz() const;
-  bool setBand(size_t index);
-  bool setMode(Mode mode);
-  bool setFrequency(uint32_t hz);
-  bool turnFrequency(int turns);
-  void turnBand(int turns);
-  void turnMode(int turns);
-  void turnStep(int turns);
-private:
-  uint32_t stepForBand(size_t index) const;
-  struct Memory { uint32_t hz; Mode mode; uint8_t step; };
-  Memory memories_[bandCount]{};
-  size_t bandIndex_ = 3;
-};
-}
+uint32_t radio_step_option(size_t band, si473x_mode_t mode, int index);
+uint8_t radio_step_option_count(size_t band, si473x_mode_t mode);
+int radio_step_option_index(size_t band, si473x_mode_t mode, uint32_t step_hz);
+
+// Per-band memory in portable units, as saved and restored.
+typedef struct { uint32_t frequency_hz; si473x_mode_t mode; uint32_t step_hz; } radio_band_memory_t;
+typedef struct { size_t band; radio_band_memory_t memories[RADIO_BAND_COUNT]; } radio_state_t;
+
+// Current band plus each band's frequency, mode and step choice. Plain data:
+// copy by assignment, e.g. to preview tuning without changing the original.
+typedef struct { uint32_t hz; si473x_mode_t mode; uint8_t step; } radio_memory_t;
+typedef struct {
+  size_t band;
+  radio_memory_t memories[RADIO_BAND_COUNT];
+} radio_model_t;
+
+void radio_model_init(radio_model_t* model);
+radio_state_t radio_model_state(const radio_model_t* model);
+// Validates every available band before committing; a failed restore changes nothing.
+bool radio_model_restore(radio_model_t* model, const radio_state_t* state);
+static inline const radio_band_t* radio_model_band(const radio_model_t* model) { return &radio_bands[model->band]; }
+static inline si473x_mode_t radio_model_mode(const radio_model_t* model) { return model->memories[model->band].mode; }
+static inline uint32_t radio_model_frequency(const radio_model_t* model) { return model->memories[model->band].hz; }
+uint32_t radio_model_step(const radio_model_t* model);
+bool radio_model_set_band(radio_model_t* model, size_t index);
+bool radio_model_set_mode(radio_model_t* model, si473x_mode_t mode);
+bool radio_model_set_frequency(radio_model_t* model, uint32_t hz);
+// Crosses into adjacent bands at their endpoints; stops at the global endpoints.
+bool radio_model_turn_frequency(radio_model_t* model, int turns);
+void radio_model_turn_band(radio_model_t* model, int turns);
+void radio_model_turn_mode(radio_model_t* model, int turns);
+void radio_model_turn_step(radio_model_t* model, int turns);
