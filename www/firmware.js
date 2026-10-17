@@ -19,10 +19,7 @@ export async function flash(port, boardId, image, { log, progress }) {
   let transport;
   try {
     log('加载刷机工具…');
-    const [{ ESPLoader, Transport }, { default: md5 }] = await Promise.all([
-      import('https://unpkg.com/esptool-js@0.7.0/bundle.js'),
-      import('https://esm.sh/js-md5@0.8.3'),
-    ]);
+    const { ESPLoader, Transport } = await import('https://unpkg.com/esptool-js@0.7.0/bundle.js');
     const data = await verifiedImage(image);
     const board = BOARDS[boardId];
     if (!board || ![0, 0x10000].includes(image.address) || (image.address === 0 && data.length !== board.size) || data.length + image.address > board.size) throw new Error('固件布局与所选设备不符。');
@@ -36,10 +33,10 @@ export async function flash(port, boardId, image, { log, progress }) {
     log('设备型号检查通过，开始写入。请勿断开 USB。');
     await loader.writeFlash({
       fileArray: [{ data, address: image.address }], flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep',
-      eraseAll: false, compress: true, calculateMD5Hash: bytes => md5(bytes),
+      eraseAll: false, compress: true,
       reportProgress: (_index, written, total) => progress(Math.floor(written / total * 100)),
     });
-    log('写入和 MD5 校验完成，正在重启设备…');
+    log('固件写入完成，正在重启设备…');
     try { await loader.after('hard_reset'); }
     catch { log('自动重启未完成。请手动重新开机后连接控制台。'); }
   } finally {
