@@ -27,7 +27,8 @@ runs (after daily release publication), manual dispatch, and release edits.
 It mirrors the latest eight compatible releases and checks SHA-256 against
 release build metadata. Keeping the manifest and binaries on Pages avoids
 GitHub release-download CORS and browser API rate limits. The browser also
-checks image length/SHA-256 before writing and MD5 against flash after writing.
+checks image length and SHA-256 before writing; the flasher then uses esptool-js
+to write the image over USB serial.
 
 ATS Mini uses ESP32-S3 / 16 MiB; V5A uses ESP32 / 4 MiB. The flasher checks the
 actual chip and flash capacity. Application updates write at 0x10000; complete
