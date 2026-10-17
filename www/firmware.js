@@ -3,24 +3,35 @@ export const BOARDS = {
   'v5a': { name: 'GeekNest V5A', chip: 'ESP32', size: 4 * 1024 * 1024, frequency: '40m' },
 };
 
-export async function verifiedImage(image, fetcher = fetch) {
-  const url = new URL(image.path, new URL('./', location.href));
-  if (url.origin !== location.origin || !/^[a-f0-9]{64}$/.test(image.sha256)) throw new Error('固件清单无效。');
-  const response = await fetcher(url);
-  if (!response.ok) throw new Error(`固件下载失败 (${response.status})，请稍后重试。`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
+export async function verifiedImage(image, { file, fetcher = fetch } = {}) {
+  if (!/^https:\/\/api\.github\.com\/repos\/lsongdev\/tinyradio\/releases\/assets\/\d+$/.test(image.path) || !/^[a-f0-9]{64}$/.test(image.sha256)) throw new Error('固件信息无效。');
+  let bytes;
+  if (file) {
+    if (file.size !== image.size) throw new Error('固件文件大小不匹配，请选择当前版本对应的 .bin 文件。');
+    bytes = new Uint8Array(await file.arrayBuffer());
+  } else {
+    let response;
+    try {
+      response = await fetcher(image.path, { headers: { Accept: 'application/octet-stream' }, signal: AbortSignal.timeout(120000) });
+    } catch {
+      throw new Error('GitHub 固件下载被浏览器或网络阻止。请点击「下载 .bin」，在「本地固件」中选择文件，再重新刷机。');
+    }
+    if (!response.ok) throw new Error(`固件下载失败 (${response.status})，请下载后选择本地文件。`);
+    bytes = new Uint8Array(await response.arrayBuffer());
+  }
   if (bytes.length !== image.size) throw new Error('固件文件大小不匹配，请刷新页面重试。');
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2, '0')).join('');
   if (hash !== image.sha256) throw new Error('固件 SHA-256 校验失败，已停止刷机。');
   return bytes;
 }
 
-export async function flash(port, boardId, image, { log, progress }) {
+export async function flash(port, boardId, image, { log, progress, file }) {
   let transport;
   try {
     log('加载刷机工具…');
     const { ESPLoader, Transport } = await import('https://unpkg.com/esptool-js@0.7.0/bundle.js');
-    const data = await verifiedImage(image);
+    log(file ? '正在校验本地固件…' : '正在下载并校验固件…');
+    const data = await verifiedImage(image, { file });
     const board = BOARDS[boardId];
     if (!board || ![0, 0x10000].includes(image.address) || (image.address === 0 && data.length !== board.size) || data.length + image.address > board.size) throw new Error('固件布局与所选设备不符。');
     log('SHA-256 校验通过。正在连接引导程序…');
