@@ -2,7 +2,8 @@ import { h, render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 import { RadioConnection } from './protocol.js';
-import { BOARDS, flash } from './firmware.js';
+import { flash } from './firmware.js?v=20261017-releases';
+import { fetchReleases } from './releases.js';
 
 const html = htm.bind(h);
 const REPO = 'https://github.com/lsongdev/tinyradio';
@@ -24,6 +25,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [releaseError, setReleaseError] = useState('');
   const [install, setInstall] = useState('update');
+  const [localFile, setLocalFile] = useState(null);
+  const fileInput = useRef(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState(null);
@@ -47,16 +50,14 @@ function App() {
   async function loadReleases() {
     setLoading(true); setReleaseError('');
     try {
-      const response = await fetch('./releases.json', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (!Array.isArray(data.releases)) throw new Error('无效的版本清单');
-      setReleases(data.releases);
-      setReleaseId(data.releases.find(r => r.boards[board])?.tag || '');
-    } catch { setReleaseError('版本列表暂时无法加载，请检查网络后重试。'); }
+      const data = await fetchReleases();
+      setReleases(data);
+      setReleaseId(data.find(r => r.boards[board])?.tag || '');
+    } catch (error) { setReleaseError(error.message || '版本列表暂时无法加载，请检查网络后重试。'); }
     finally { setLoading(false); }
   }
   useEffect(() => { loadReleases(); }, []);
+  useEffect(() => { setLocalFile(null); if (fileInput.current) fileInput.current.value = ''; }, [board, releaseId, install]);
   useEffect(() => {
     if (!connected) return;
     const onDisconnect = event => {
@@ -130,7 +131,7 @@ function App() {
     setFlashed(false); setLogs([]); setProgress(0);
     await flash(port, board, image, {
       log: line => setLogs(lines => [...lines.slice(-79), String(line)]),
-      progress: setProgress,
+      progress: setProgress, file: localFile,
     });
     setProgress(100); setFlashed(true);
     setMessage('刷机完成。等待设备启动，点击「连接设备」进入控制台；USB 端口名称可能会变化。');
@@ -168,13 +169,14 @@ function App() {
           <div class="form-grid"><label>设备型号<select value=${board} disabled=${Boolean(busy) || connected} onChange=${e => changeBoard(e.target.value)}><option value="ats-mini">ATS Mini / ESP32-S3</option><option value="v5a">GeekNest V5A / ESP32</option></select></label>
           <label>固件版本<select value=${releaseId} disabled=${loading || !available.length || Boolean(busy)} onChange=${e => { setReleaseId(e.target.value); setFlashed(false); }}>${!available.length && html`<option value="">${loading ? '正在加载…' : '暂无可用版本'}</option>`}${available.map(r => html`<option key=${r.tag} value=${r.tag}>${r.tag}${r.prerelease ? ' · 预发布' : ''}</option>`)}</select></label></div>
           ${releaseError && html`<p class="error">${releaseError} <button class="text-button" onClick=${loadReleases}>重新加载</button></p>`}
-          ${!loading && !releaseError && !available.length && html`<p class="muted">尚未同步该设备的固件。可前往 <a href=${REPO + '/releases'}>GitHub Releases</a> 查看下载。</p>`}
+          ${!loading && !releaseError && !available.length && html`<p class="muted">暂无带 SHA-256 校验值的可用固件。可前往 <a href=${REPO + '/releases'}>GitHub Releases</a> 查看下载。</p>`}
           <fieldset disabled=${Boolean(busy)}><legend>安装方式</legend><label class="choice"><input type="radio" name="install" checked=${install === 'update'} onChange=${() => { setInstall('update'); setAcknowledged(false); }} /><span><strong>更新固件</strong><small>已经安装 tinyradio，保留兼容的设置。</small></span><span class="tag">日常更新</span></label>
           <label class="choice"><input type="radio" name="install" checked=${install === 'full'} onChange=${() => { setInstall('full'); setAcknowledged(false); }} /><span><strong>完整安装</strong><small>首次安装或恢复设备，重置所有设置与数据。</small></span></label></fieldset>
           ${(install === 'full' || board === 'v5a') && html`<label class="ack"><input type="checkbox" checked=${acknowledged} disabled=${Boolean(busy)} onChange=${e => setAcknowledged(e.target.checked)} /><span>${board === 'v5a' ? '我已备份原厂固件，确认设备为 GeekNest V5A，扬声器开关已切至 Analog。' : '我确认设备型号正确，并了解完整安装会覆盖设备上的设置与数据。'}</span></label>`}
-          <div class="install-actions"><button class="primary" disabled=${!supported || !image || Boolean(busy) || connected || ((install === 'full' || board === 'v5a') && !acknowledged)} onClick=${() => run('刷机进行中，请勿拔线…', startFlash)}>↧ 连接并${install === 'full' ? '安装' : '更新'}固件</button>${image && html`<a href=${image.path} download>下载 .bin ↗</a>`}</div>
+          <div class="install-actions"><button class="primary" disabled=${!supported || !image || Boolean(busy) || connected || ((install === 'full' || board === 'v5a') && !acknowledged)} onClick=${() => run('刷机进行中，请勿拔线…', startFlash)}>↧ 连接并${install === 'full' ? '安装' : '更新'}固件</button>${image && html`<a href=${image.download} target="_blank" rel="noreferrer">下载 .bin ↗</a>`}</div>
+          ${image && html`<label class="local-firmware">本地固件（可选）<input ref=${fileInput} type="file" accept=".bin,application/octet-stream" disabled=${Boolean(busy)} onChange=${e => setLocalFile(e.target.files[0] || null)} /><small>若 GitHub 自动下载被浏览器拦截，请先点击「下载 .bin」，再选择下载的文件。文件必须与当前型号、版本及安装方式匹配。</small></label>`}
           ${connected && html`<p class="muted">刷机前请先断开下方控制台的连接。</p>`}
-          ${release && html`<p class="build-meta"><a href=${release.url} target="_blank" rel="noreferrer">${release.tag} ↗</a>${images && html`<span> · ${images.commit.slice(0, 7)} · SHA-256 校验</span>`}</p>`}
+          ${release && html`<p class="build-meta"><a href=${release.url} target="_blank" rel="noreferrer">${release.tag} ↗</a>${images && html`<span> · SHA-256 校验</span>`}</p>`}
           ${logs.length > 0 && html`<div class="flash-progress"><div class="row"><strong>${flashed ? '刷机完成 ✓' : busy ? '正在处理固件' : '刷机未完成'}</strong><span>${progress}%</span></div><progress max="100" value=${progress} aria-label="固件写入进度"></progress><details open=${!flashed}><summary>刷机日志</summary><pre class="log">${logs.join('\n')}</pre></details></div>`}
         </div><aside class="install-guide"><span class="guide-icon" aria-hidden="true">↗</span><h3>准备好，就连接。</h3><ol><li><strong>确认设备</strong><p>选择与你的硬件一致的型号。V5A 首次安装前请备份原厂固件。</p></li><li><strong>插上数据线</strong><p>使用可传输数据的 USB 线，并关闭串口监视器等占用端口的程序。</p></li><li><strong>选择版本，开始安装</strong><p>允许浏览器访问串口。若无法进入引导程序，按设备说明进入 BOOT 模式后重试。</p></li><li><strong>重新连接，开始收听</strong><p>刷机后等待设备启动，再连接下方控制台。</p></li></ol><a href=${REPO + '/blob/master/docs/user-manual.md'} target="_blank" rel="noreferrer">阅读完整使用手册 ↗</a></aside></div>
       </section>
