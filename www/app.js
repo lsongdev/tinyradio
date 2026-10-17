@@ -142,7 +142,7 @@ function App() {
   const disabled = !connected || Boolean(busy);
   const radioState = state || {};
   return html`<div class="app-shell">
-    <header class="site-header"><a class="brand" href="#" aria-label="tinyradio 首页"><span class="brand-mark" aria-hidden="true">▥</span> tiny<span>radio</span></a>
+    <header class="site-header"><a class="brand" href="#" aria-label="tinyradio 首页"><span class="brand-mark" aria-hidden="true">▥</span><span class="brand-tiny">tiny</span><span class="brand-radio">radio</span></a>
       <nav aria-label="主导航"><a href="#about">项目</a><a href="#install">刷机</a><a href="#console">控制台</a><a href=${REPO} target="_blank" rel="noreferrer">GitHub ↗</a></nav>
     </header>
     <main>
@@ -198,7 +198,7 @@ function App() {
       </section>
       <section class="closing"><div><p class="eyebrow">SMALL RADIO. OPEN POSSIBILITIES.</p><h2>保持好奇，继续收听。</h2><p>从硬件到固件，一起探索无线电。</p></div><div class="closing-links"><a href=${REPO}>浏览源代码 ↗</a><a href=${REPO + '/blob/master/docs/user-manual.md'}>使用手册 ↗</a><a href=${REPO + '/issues'}>反馈问题 ↗</a></div></section>
     </main>
-    <footer class="site-footer"><a class="brand" href="#">tiny<span>radio</span></a><p>Made for the joy of listening.</p><a href=${REPO + '/blob/master/LICENSE'}>License ↗</a></footer>
+    <footer class="site-footer"><a class="brand" href="#" aria-label="tinyradio 首页"><span class="brand-tiny">tiny</span><span class="brand-radio">radio</span></a><p>Made for the joy of listening.</p><a href=${REPO + '/blob/master/LICENSE'}>License ↗</a></footer>
     <div class="status-area" aria-live="polite">${busy && html`<p class="status busy">${busy}</p>`}${message && html`<p class="status success">${message}</p>`}${error && html`<p class="status error" role="alert">${error}<button aria-label="关闭错误提示" onClick=${() => setError('')}>×</button></p>`}</div>
   </div>`;
 }
