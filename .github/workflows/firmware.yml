@@ -81,7 +81,7 @@ jobs:
           Firmware for SI4732 receivers, one set of files per board:
 
           - ats-mini-*: Sunnygold SI4732 Mini Radio (ESP32-S3, PCB 1.2 reference).
-          - geeknest-v5a-*: GeekNest Radio V5A (ESP32), experimental. Set the speaker switch to Analog and back up the original flash first.
+          - geeknest-v5a-*: GeekNest Radio V5A (ESP32). Set the speaker switch to Analog and back up the original flash first.
 
           - Commit: [$BUILD_SHA](https://github.com/$GH_REPO/commit/$BUILD_SHA)
           - Build: [GitHub Actions]($RUN_URL)

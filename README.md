@@ -29,7 +29,7 @@ Tune LW, MW, SW, and VHF/FM with one encoder. Adjust reception, search for stati
 | Board | MCU | Build | Status |
 | --- | --- | --- | --- |
 | Sunnygold SI4732 Mini (ATS Mini) | ESP32-S3 | `ats-mini` | Supported; release builds and the [hardware facts](docs/hardware-ats.md) cover this board |
-| GeekNest V5A | ESP32 | `v5a` | Experimental: display, encoder, side keys, FM reception, saved settings, power on/off, audio spectrum, and temperature/humidity verified; AIR 118–137 MHz tunes and locks, aviation reception not yet heard; RTC timekeeping awaits an RDS clock signal. See [V5A hardware facts](docs/hardware-v5a.md) |
+| GeekNest V5A | ESP32 | `v5a` | Supported: display, encoder, side keys, FM reception, saved settings, power on/off, audio spectrum, and temperature/humidity verified; AIR 118–137 MHz tunes and locks, aviation reception not yet heard; RTC timekeeping awaits an RDS clock signal. See [V5A hardware facts](docs/hardware-v5a.md) |
 
 Both boards share one UI, receiver logic, and SI4732 driver. Board-specific code lives in `src/boards/<name>/`; see [Development](docs/development.md#adding-a-board).
 
@@ -51,4 +51,4 @@ After switching on, rotate to tune and short-press to select a control. Long-pre
 
 ## License and credits
 
-Original code and authored documentation are [MIT licensed](LICENSE). The SSB patch, imported hardware assets, and dependencies retain their own terms; see [third-party notices and credits](docs/development.md#third-party-notices).
+Original code and authored documentation are licensed under the [license](https://github.com/lsongdev/.github/blob/main/LICENSE.md). The SSB patch, imported hardware assets, and dependencies retain their own terms; see [third-party notices and credits](docs/development.md#third-party-notices).

@@ -34,7 +34,7 @@ BOARDS = {
     },
     "v5a": {
         "prefix": "geeknest-v5a", "name": "GeekNest V5A",
-        "title": "GeekNest V5A firmware (experimental)",
+        "title": "GeekNest V5A firmware",
         "target": "Classic ESP32, 4 MB flash, GeekNest Radio V5A main board.",
         "chip": "esp32", "flash_size": 4, "flash_freq": "40m", "bootloader": 0x1000, "baud": 115200,
         "notes": "Set the speaker switch to Analog. Back up the original flash before the first\n"
